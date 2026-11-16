@@ -1,4 +1,5 @@
 import { HistorySettingsBlock } from '../components/HistorySettingsBlock'
+import { IntegrationSettings } from '../components/IntegrationSettings'
 import { useToast } from '../components/ToastProvider'
 import { useVault } from '../vault/VaultContext'
 
@@ -124,6 +125,8 @@ export function SettingsPage() {
             </button>
           </div>
         </section>
+
+        <IntegrationSettings />
 
         <HistorySettingsBlock />
 

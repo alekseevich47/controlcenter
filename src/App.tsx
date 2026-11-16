@@ -16,6 +16,7 @@ import { SeoPage } from './pages/SeoPage'
 import { ServersPage } from './pages/ServersPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { UpdatesPage } from './pages/UpdatesPage'
+import { LocalApiHost } from './api/LocalApiHost'
 import { VaultProvider, useVault } from './vault/VaultContext'
 import { isTauri } from './vault/runtime'
 
@@ -32,6 +33,8 @@ function Gate() {
   if (status !== 'unlocked') return <UnlockScreen />
 
   return (
+    <>
+    <LocalApiHost />
     <Routes>
       <Route element={<AppLayout />}>
         <Route index element={<HomePage />} />
@@ -49,6 +52,7 @@ function Gate() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
+    </>
   )
 }
 

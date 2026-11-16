@@ -24,6 +24,8 @@ import {
   type HistoryEventFlag,
   type HistoryPurgeFilter,
 } from './historyPrefs'
+import { githubWhoAmI } from '../github/client'
+import { assertGithubToken } from '../github/token'
 import { VaultSession } from './session'
 import type { Collection, CollectionMap, VaultEvent, VaultPrefs } from './types'
 
@@ -42,8 +44,18 @@ interface VaultContextValue {
   savePrefs: (patch: Partial<VaultPrefs>) => Promise<void>
   syncNow: () => Promise<void>
   list: <C extends Collection>(collection: C) => Promise<CollectionMap[C][]>
+  get: <C extends Collection>(collection: C, id: string) => Promise<CollectionMap[C] | null>
   put: <C extends Collection>(collection: C, entity: CollectionMap[C]) => Promise<void>
   remove: (collection: Collection, id: string) => Promise<void>
+  /** Логин GitHub, без токена. */
+  githubLogin: string | null
+  /** Bearer локального API. В памяти, пока vault открыт и API включён. */
+  apiToken: string | null
+  connectGithub: (token: string) => Promise<{ login: string }>
+  disconnectGithub: () => Promise<void>
+  readGithubToken: () => Promise<string | null>
+  setLocalApiEnabled: (enabled: boolean) => Promise<void>
+  rotateApiToken: () => Promise<string>
   /** Удаляет события истории по фильтру. Возвращает число удалённых. */
   purgeHistory: (filter: HistoryPurgeFilter) => Promise<number>
   refreshTick: number
@@ -82,6 +94,27 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null)
   const [refreshTick, setRefreshTick] = useState(0)
   const [isTauriRuntime, setIsTauriRuntime] = useState(false)
+  const [githubLogin, setGithubLogin] = useState<string | null>(null)
+  const [apiToken, setApiToken] = useState<string | null>(null)
+
+  const hydrateIntegrations = useCallback(async (current: VaultSession) => {
+    try {
+      const auth = await current.readGithubAuth()
+      setGithubLogin(auth?.login ?? null)
+    } catch {
+      setGithubLogin(null)
+    }
+    try {
+      if (current.prefs.localApi) {
+        const token = await current.ensureApiToken()
+        setApiToken(token.token)
+      } else {
+        setApiToken(null)
+      }
+    } catch {
+      setApiToken(null)
+    }
+  }, [])
 
   const bump = useCallback(() => setRefreshTick((n) => n + 1), [])
 
@@ -134,9 +167,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       } catch {
         /* не блокируем вход из‑за audit */
       }
+      await hydrateIntegrations(session)
       bump()
     },
-    [session, bump],
+    [session, bump, hydrateIntegrations],
   )
 
   const unlock = useCallback(
@@ -163,9 +197,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           /* ignore */
         }
       }
+      await hydrateIntegrations(session)
       bump()
     },
-    [session, bump],
+    [session, bump, hydrateIntegrations],
   )
 
   const lock = useCallback(() => {
@@ -174,11 +209,15 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         .catch(() => undefined)
         .finally(() => {
           session.lock()
+          setGithubLogin(null)
+          setApiToken(null)
           setStatus('locked')
         })
       return
     }
     session?.lock()
+    setGithubLogin(null)
+    setApiToken(null)
     setStatus('locked')
   }, [session])
 
@@ -245,6 +284,75 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     },
     [session],
   )
+
+  const get = useCallback(
+    async <C extends Collection>(collection: C, id: string) => {
+      if (!session?.unlocked) return null
+      return session.get(collection, id)
+    },
+    [session],
+  )
+
+  const connectGithub = useCallback(
+    async (token: string) => {
+      if (!session?.unlocked) throw new Error('Vault заблокирован')
+      const clean = assertGithubToken(token)
+      const login = await githubWhoAmI(clean)
+      await session.writeGithubAuth({
+        token: clean,
+        login,
+        updatedAt: new Date().toISOString(),
+      })
+      setGithubLogin(login)
+      try {
+        await writeSystemEvent(session, 'prefsChange', `Подключён GitHub: ${login}`)
+        bump()
+      } catch {
+        /* ignore */
+      }
+      return { login }
+    },
+    [session, bump],
+  )
+
+  const disconnectGithub = useCallback(async () => {
+    if (!session?.unlocked) throw new Error('Vault заблокирован')
+    await session.clearGithubAuth()
+    setGithubLogin(null)
+    try {
+      await writeSystemEvent(session, 'prefsChange', 'GitHub отключён')
+      bump()
+    } catch {
+      /* ignore */
+    }
+  }, [session, bump])
+
+  const readGithubToken = useCallback(async () => {
+    if (!session?.unlocked) return null
+    const auth = await session.readGithubAuth()
+    return auth?.token ?? null
+  }, [session])
+
+  const setLocalApiEnabled = useCallback(
+    async (enabled: boolean) => {
+      if (!session?.unlocked) throw new Error('Vault заблокирован')
+      await savePrefs({ localApi: enabled })
+      if (!enabled) {
+        setApiToken(null)
+        return
+      }
+      const token = await session.ensureApiToken()
+      setApiToken(token.token)
+    },
+    [session, savePrefs],
+  )
+
+  const rotateApiToken = useCallback(async () => {
+    if (!session?.unlocked) throw new Error('Vault заблокирован')
+    const token = await session.rotateApiToken()
+    if (session.prefs.localApi) setApiToken(token.token)
+    return token.token
+  }, [session])
 
   const put = useCallback(
     async <C extends Collection>(collection: C, entity: CollectionMap[C]) => {
@@ -351,8 +459,16 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       savePrefs,
       syncNow,
       list,
+      get,
       put,
       remove,
+      githubLogin,
+      apiToken,
+      connectGithub,
+      disconnectGithub,
+      readGithubToken,
+      setLocalApiEnabled,
+      rotateApiToken,
       purgeHistory,
       refreshTick,
       bump,
@@ -370,8 +486,16 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       savePrefs,
       syncNow,
       list,
+      get,
       put,
       remove,
+      githubLogin,
+      apiToken,
+      connectGithub,
+      disconnectGithub,
+      readGithubToken,
+      setLocalApiEnabled,
+      rotateApiToken,
       purgeHistory,
       refreshTick,
       bump,

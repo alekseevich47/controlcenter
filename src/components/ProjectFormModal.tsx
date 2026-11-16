@@ -4,7 +4,8 @@ import {
   normalizeProjectStatus,
   type ProjectStatus,
 } from '../vault/projectStatus'
-import type { Client, Project } from '../vault/types'
+import { formatGithubRepo, parseGithubRepo } from '../github/repo'
+import type { Client, GithubRepoLink, Project } from '../vault/types'
 import { CustomSelect } from './CustomSelect'
 import { IconClose } from './Icons'
 
@@ -24,6 +25,7 @@ export type ProjectFormValues = {
   clientId: string | null
   domain: string
   note: string
+  github: GithubRepoLink | null
 }
 
 interface ProjectFormModalProps {
@@ -43,7 +45,9 @@ function resolveClientId(p: Project | null | undefined, clients: Client[]): stri
   return byName?.id ?? null
 }
 
-function fromProject(p?: Project | null, clients: Client[] = []): ProjectFormValues {
+type DraftValues = Omit<ProjectFormValues, 'github'> & { githubRepo: string }
+
+function fromProject(p?: Project | null, clients: Client[] = []): DraftValues {
   const clientId = resolveClientId(p ?? null, clients)
   const clientName = clientId
     ? (clients.find((c) => c.id === clientId)?.name ?? p?.client ?? '')
@@ -56,10 +60,11 @@ function fromProject(p?: Project | null, clients: Client[] = []): ProjectFormVal
     clientId,
     domain: p?.domain ?? '',
     note: p?.note ?? '',
+    githubRepo: formatGithubRepo(p?.github),
   }
 }
 
-function sanitize(values: ProjectFormValues, clients: Client[]): ProjectFormValues {
+function sanitize(values: DraftValues, clients: Client[]): ProjectFormValues {
   const clientId = values.clientId?.trim() || null
   const fromList = clientId ? clients.find((c) => c.id === clientId) : undefined
   return {
@@ -72,6 +77,7 @@ function sanitize(values: ProjectFormValues, clients: Client[]): ProjectFormValu
     clientId: fromList ? fromList.id : null,
     domain: values.domain.trim().slice(0, MAX.domain) || '—',
     note: values.note.trim().slice(0, MAX.note),
+    github: values.githubRepo.trim() ? parseGithubRepo(values.githubRepo) : null,
   }
 }
 
@@ -84,7 +90,7 @@ function ProjectFormBody({
   onSubmit,
 }: Omit<ProjectFormModalProps, 'open'>) {
   const titleId = useId()
-  const [values, setValues] = useState<ProjectFormValues>(() => fromProject(initial, clients))
+  const [values, setValues] = useState<DraftValues>(() => fromProject(initial, clients))
   const [error, setError] = useState<string | null>(null)
 
   const clientOptions = useMemo(
@@ -107,6 +113,10 @@ function ProjectFormBody({
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
+    if (values.githubRepo.trim() && !parseGithubRepo(values.githubRepo)) {
+      setError('Репозиторий: owner/repo или ссылка github.com/owner/repo')
+      return
+    }
     const next = sanitize(values, clients)
     if (!next.name) {
       setError('Укажите название проекта')
@@ -195,6 +205,18 @@ function ProjectFormBody({
               maxLength={MAX.stack}
               onChange={(e) => setValues((v) => ({ ...v, stack: e.target.value }))}
               placeholder="React · Nest · Postgres"
+            />
+          </div>
+          <div className="field" style={{ gridColumn: '1 / -1' }}>
+            <label htmlFor="proj-github">GitHub</label>
+            <input
+              id="proj-github"
+              value={values.githubRepo}
+              maxLength={200}
+              onChange={(e) => setValues((v) => ({ ...v, githubRepo: e.target.value }))}
+              placeholder="loomixx/controlcenter или https://github.com/loomixx/controlcenter"
+              autoComplete="off"
+              spellCheck={false}
             />
           </div>
           <div className="field" style={{ gridColumn: '1 / -1' }}>

@@ -80,6 +80,11 @@ export interface VaultPrefs {
   role: 'owner' | 'partner'
   lastSyncAt: string | null
   vaultPath: string | null
+  /**
+   * Локальный HTTP API на 127.0.0.1.
+   * Bearer лежит в зашифрованном `.lcc/api-token.enc`, не в prefs.
+   */
+  localApi: boolean
   /** Журнал: что писать в events и политики очистки */
   history: HistoryPrefs
 }
@@ -94,6 +99,12 @@ export interface EntityBase {
 }
 
 export type ProjectStatusKind = 'green' | 'blue' | 'amber' | 'purple' | 'red'
+
+/** Привязка проекта к репозиторию GitHub. Токен здесь не хранится. */
+export interface GithubRepoLink {
+  owner: string
+  repo: string
+}
 
 export interface Project extends EntityBase {
   name: string
@@ -110,6 +121,8 @@ export interface Project extends EntityBase {
   pinned?: boolean
   /** Soft-archive: проект в разделе «Архив» */
   deletedAt?: string | null
+  /** Репозиторий GitHub (`owner/repo`). Токен — отдельно, в `.lcc/github.enc`. */
+  github?: GithubRepoLink | null
 }
 
 /** Каналы связи клиента (несколько позиций на канал). */
@@ -187,6 +200,8 @@ export interface Campaign extends EntityBase {
   budget: string
   status: string
   statusKind: 'green' | 'amber'
+  /** seo — органика, ads — платная реклама. Пусто = видно в обеих вкладках проекта. */
+  channel?: 'seo' | 'ads'
 }
 
 export interface FinanceEntry extends EntityBase {
@@ -285,6 +300,7 @@ export const DEFAULT_PREFS: VaultPrefs = {
   role: 'owner',
   lastSyncAt: null,
   vaultPath: null,
+  localApi: false,
   history: defaultHistoryPrefs(),
 }
 

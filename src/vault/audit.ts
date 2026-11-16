@@ -35,7 +35,14 @@ export type DiffRow = {
 const SKIP_KEYS = new Set(['updatedAt'])
 
 /** Поля, которые не кладём в audit-снимки (шум / объём). */
-const REDACT_STORE = new Set(['body'])
+const REDACT_STORE = new Set([
+  'body',
+  'token',
+  'password',
+  'secret',
+  'authorization',
+  'pat',
+])
 
 export function normalizeAction(raw?: string): AuditAction {
   if (raw === 'create' || raw === 'update' || raw === 'delete' || raw === 'note') return raw

@@ -104,8 +104,20 @@ function searchProjects(items: Project[], q: string): SearchHit[] {
       'projects',
       p.id,
       p.name,
-      [p.status, p.client, p.domain, archived ? 'Архив' : ''].filter(Boolean).join(' · '),
-      joinHay(p.name, p.status, p.stack, p.client, p.domain, p.note, p.tags, archived ? 'архив' : ''),
+      [p.status, p.client, p.domain, p.github ? `${p.github.owner}/${p.github.repo}` : '', archived ? 'Архив' : '']
+        .filter(Boolean)
+        .join(' · '),
+      joinHay(
+        p.name,
+        p.status,
+        p.stack,
+        p.client,
+        p.domain,
+        p.note,
+        p.github ? `${p.github.owner}/${p.github.repo}` : '',
+        p.tags,
+        archived ? 'архив' : '',
+      ),
       q,
     )
     if (found) out.push(found)

@@ -113,6 +113,7 @@ export function ProjectsPage() {
           clientId: values.clientId,
           domain: values.domain,
           note: values.note,
+          github: values.github,
           updatedAt: now,
         }
         await put('projects', next)
@@ -131,6 +132,7 @@ export function ProjectsPage() {
           clientId: values.clientId,
           domain: values.domain,
           note: values.note,
+          github: values.github,
           pinned: false,
           deletedAt: null,
         }

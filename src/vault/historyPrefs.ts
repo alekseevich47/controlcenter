@@ -149,6 +149,7 @@ export function normalizeVaultPrefs(raw: Partial<VaultPrefs> | null | undefined)
   return {
     ...DEFAULT_PREFS,
     ...(raw ?? {}),
+    localApi: raw?.localApi === true,
     history: normalizeHistoryPrefs(raw?.history ?? DEFAULT_PREFS.history),
   }
 }

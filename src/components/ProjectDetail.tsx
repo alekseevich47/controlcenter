@@ -9,6 +9,7 @@ import type { EntityBase, Project } from '../vault/types'
 import { useCollection } from '../vault/useCollection'
 import { IconArchive, IconEdit, IconPin, IconTrash } from './Icons'
 import { ProjectEventsPreview, ProjectHistoryPanel } from './ProjectHistory'
+import { ProjectGithubPanel } from './ProjectGithubPanel'
 import { ServersPanel } from './ServersPanel'
 import { SecretsSkeleton, TableSkeleton } from './Skeleton'
 
@@ -171,12 +172,7 @@ export function ProjectDetail({
         )}
         {tab === 'domains' && <ProjectDomains project={project} />}
         {tab === 'secrets' && <ProjectSecrets project={project} />}
-        {tab === 'deploy' && (
-          <PlaceholderPanel
-            title="Деплой"
-            text="Пайплайны и релизы появятся здесь. Пока раздел-заглушка."
-          />
-        )}
+        {tab === 'deploy' && <ProjectGithubPanel project={project} />}
         {tab === 'seo' && <ProjectCampaigns project={project} mode="seo" />}
         {tab === 'ads' && <ProjectCampaigns project={project} mode="ads" />}
         {tab === 'docs' && <ProjectDocs project={project} />}
@@ -219,6 +215,22 @@ function HomePassport({
           <small>Домен</small>
           <strong>{project.domain}</strong>
         </div>
+        <div>
+          <small>GitHub</small>
+          <strong>
+            {project.github?.owner && project.github.repo ? (
+              <a
+                href={`https://github.com/${project.github.owner}/${project.github.repo}`}
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                {project.github.owner}/{project.github.repo}
+              </a>
+            ) : (
+              '—'
+            )}
+          </strong>
+        </div>
         <div style={{ gridColumn: '1 / -1' }}>
           <small>Стек</small>
           <strong>{project.stack}</strong>
@@ -242,15 +254,6 @@ function HomePassport({
           <strong className="mono">{project.id}</strong>
         </div>
       </div>
-    </div>
-  )
-}
-
-function PlaceholderPanel({ title, text }: { title: string; text: string }) {
-  return (
-    <div className="card empty-hint project-placeholder">
-      <h2 className="panel-title">{title}</h2>
-      <p>{text}</p>
     </div>
   )
 }
@@ -339,8 +342,13 @@ function ProjectCampaigns({
 }) {
   const { items, loading } = useCollection('campaigns')
   const rows = useMemo(
-    () => items.filter((c) => belongsToProject(c, project)),
-    [items, project],
+    () =>
+      items.filter((c) => {
+        if (!belongsToProject(c, project)) return false
+        if (!c.channel) return true
+        return c.channel === mode
+      }),
+    [items, project, mode],
   )
 
   return (

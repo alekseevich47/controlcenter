@@ -1,12 +1,13 @@
 import react from '@vitejs/plugin-react'
 import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
+import { lccLocalApiPlugin } from './vite.localApi.ts'
 
 const host = process.env.TAURI_DEV_HOST
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8')) as { version: string }
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), lccLocalApiPlugin()],
   clearScreen: false,
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),

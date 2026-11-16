@@ -1,3 +1,6 @@
+mod local_api;
+
+use local_api::{local_api_respond, local_api_set_token, local_api_start, local_api_stop, LocalApi};
 use tauri::{include_image, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
 
 /// Logical mins from `tauri.conf.json` → windows.minWidth / minHeight.
@@ -9,6 +12,13 @@ pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_fs::init())
     .plugin(tauri_plugin_dialog::init())
+    .manage(LocalApi::new())
+    .invoke_handler(tauri::generate_handler![
+      local_api_start,
+      local_api_stop,
+      local_api_set_token,
+      local_api_respond
+    ])
     .setup(|app| {
       if let Some(window) = app.get_webview_window("main") {
         let _ = window.set_icon(include_image!("icons/128x128.png"));

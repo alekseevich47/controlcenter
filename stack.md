@@ -26,7 +26,10 @@
 - Каждый entity-файл шифруется **AES-256-GCM**; ключ из мастер-пароля через **PBKDF2-SHA256** (310k iterations).
 - Метаданные KDF: `.lcc/meta.json` (salt, iterations) — без секрета.
 - Проверка пароля: `.lcc/probe.enc`.
-- Prefs (не секрет): `.lcc/prefs.json`.
+- Prefs (не секрет): `.lcc/prefs.json`. Флаг `localApi` только включает слушатель, сам bearer там не лежит.
+- Секреты интеграций — отдельные AES-GCM файлы, не коллекции и не audit:
+  - `.lcc/github.enc` — PAT и логин GitHub
+  - `.lcc/api-token.enc` — bearer локального API
 - Синхронизация с облаком — **по кнопке** и/или **при выходе** (сейчас пишется `lastSyncAt`; выгрузка в облако — следующий этап).
 
 ### 2.2 Формат vault
@@ -37,6 +40,8 @@
     meta.json
     probe.enc
     prefs.json
+    github.enc          # PAT, не попадает в API-ответы и audit
+    api-token.enc       # bearer локального API
   projects/{id}.json.enc
   clients/{id}.json.enc
   servers/{id}.json.enc
@@ -89,6 +94,8 @@
 | Vault | `src/vault/*` — Web Crypto + session + React context |
 | Desktop | Tauri 2 (`src-tauri/`), plugins: fs, dialog, log |
 | Данные | encrypted entity files; seed при создании vault |
+| Локальный API | `src/api/*`: JSON CRUD на `127.0.0.1`. Dev — middleware Vite `:5173/v1`. Desktop — `src-tauri/src/local_api.rs` `:47331/v1` |
+| GitHub | `src/github/*`: только `https://api.github.com`, PAT в `.lcc/github.enc` |
 | Окно | обычное (decorations); размер из `tauri.conf` (1440×900, min 1200×720); **без** auto-fullscreen; при старте clamp к **work area** монитора (панель задач / dock) в `lib.rs` |
 
 ### Системные зависимости для `npm run desktop`
@@ -140,6 +147,8 @@ controlcenter/
 │   │                     # ToastProvider, Skeleton, TopbarSearch,
 │   │                     # HistorySettingsBlock, AuditCaptureModal
 │   ├── pages/            # + HistoryPage, UpdatesPage, ClientsPage (CRUD)
+│   ├── api/              # vaultApi, HTTP-диспетчер, LocalApiHost, dev-мост
+│   ├── github/           # parse slug, проверка токена, клиент api.github.com
 │   ├── updates/          # changelog.ts — история релизов для /updates
 │   ├── version.ts        # APP_VERSION / APP_BUILD / APP_CHANNEL
 │   └── vault/
@@ -173,15 +182,15 @@ controlcenter/
 | `/` | HomePage | дашборд из vault (без «Структура инфраструктуры») |
 | `/projects` | ProjectsPage | проекты, создание/редактирование, деталка с вкладками, архив, фильтры, context menu |
 | `/servers` | ServersPage | хосты (CRUD + power stub) через `ServersPanel` |
-| `/domains` | DomainsPage | домены / DNS / SSL |
-| `/seo` | SeoPage | кампании |
+| `/domains` | DomainsPage | домены / DNS / SSL, CRUD + проект |
+| `/seo` | SeoPage | кампании, CRUD, канал `seo` / `ads` |
 | `/clients` | ClientsPage | клиенты: CRUD, деталка, ПКМ, контакты по каналам |
-| `/docs` | DocsPage | документация |
-| `/finance` | FinancePage | расходы |
-| `/secrets` | SecretsPage | SecretRef (маршрут жив; **пункта в сайдбаре нет** — секреты в вкладке проекта) |
+| `/docs` | DocsPage | документация, CRUD, текст до 20 000 символов |
+| `/finance` | FinancePage | расходы, CRUD |
+| `/secrets` | SecretsPage | SecretRef (маршрут жив; **пункта в сайдбаре нет** — секреты в вкладке проекта). Только имя и место, без значений |
 | `/history` | HistoryPage | журнал изменений + diff; topbar — «Поиск в истории...» |
 | `/updates` | UpdatesPage | версия/сборка, changelog (`src/updates/changelog.ts`), кнопка «Проверить обновления» (stub) |
-| `/settings` | SettingsPage | путь vault, prefs, блок «История» (purge + capture), lock, sync mark |
+| `/settings` | SettingsPage | путь vault, prefs, GitHub, локальный API, блок «История» (purge + capture), lock, sync mark |
 
 Сайдбар: Главная · Проекты · Серверы · Домены и DNS · SEO · Клиенты · Документация · Финансы · **История** · **Обновление** · Настройки.
 
@@ -192,7 +201,7 @@ controlcenter/
 Под topbar (поиск / уведомления / Lock / аккаунт), над «← К списку»:  
 `Главная` · `Серверы` · `Домены` · `Секреты` · `Деплой` · `SEO` · `Реклама` · `Документы` · `Финансы` · `История`.
 
-Переключение — локальный state + CSS fade (`project-tab-stage`), без смены URL. Контент scoped по `projectId` / имени проекта. «Деплой» — заглушка.  
+Переключение — локальный state + CSS fade (`project-tab-stage`), без смены URL. Контент scoped по `projectId` / имени проекта. «Деплой» читает привязанный репозиторий GitHub (описание, коммиты, открытые PR).  
 На «Главной» блок **События** (превью audit по проекту и связанным сущностям). Вкладка **История** — полный журнал обновлений проекта (`ProjectHistory.tsx`) с diff.
 
 ---
@@ -214,6 +223,7 @@ controlcenter/
 | `statusKind` | `amber` / `blue` / `purple` / `green` / `red` (выводится из статуса) |
 | `pinned` | закрепление сверху списка |
 | `deletedAt` | soft-archive → раздел «Архив» на `/projects` |
+| `github` | `{ owner, repo }` или `null`. Токен не в проекте |
 
 Форма проекта: `CustomSelect` клиентов (вместо свободного текста). При сохранении — sync `Client.projectIds`.
 
@@ -249,6 +259,30 @@ Overlays (`src/hooks/exclusiveOverlay.ts` + `useExclusiveOverlay`): один а�
 | `projectId` | опциональная привязка к проекту |
 
 UI: `ServerFormModal` (create/edit), `ConfirmDialog` на delete, outline-кнопки edit / trash / power|play (power — stub, пишет Offline/online в vault). Общий `ServersPanel` на `/servers` и во вкладке проекта.
+
+### Campaign
+
+| Поле | Смысл |
+|------|--------|
+| `channel` | `seo` или `ads`. Пусто — запись видна и в SEO, и в «Рекламе» проекта |
+| `statusKind` | только `green` / `amber` (задаёт API, не произвольная строка) |
+
+Домены, документы, финансы и секреты правятся через `vaultApi`. У секрета нет поля значения: только `name` и `place`.
+
+### Локальный API
+
+Слушает **только** `127.0.0.1`. Включается в Настройках. Bearer (`lcc_…`) в `.lcc/api-token.enc`, в память — пока vault открыт.
+
+| Метод | Путь | Смысл |
+|-------|------|--------|
+| GET | `/v1/health` | без bearer, `{ ok, authorized }` |
+| GET/POST | `/v1/{collection}` | список / создание |
+| GET/PUT/PATCH/DELETE | `/v1/{collection}/{id}` | чтение / замена обязательных полей / правка / удаление |
+| GET | `/v1/github/status` | логин, без токена |
+| POST/DELETE | `/v1/github/token` | сохранить или стереть PAT (в ответе только логин) |
+| GET | `/v1/github/repo\|commits\|pulls` | `owner` и `repo` в query, не в теле с токеном |
+
+`events` — только GET. Поля `value`, `password`, `token`, `secret` в теле сущности отклоняются. Секреты в query запрещены. Лимит тела 64 КБ, 60 запросов / 10 с. Dev: `http://127.0.0.1:5173/v1` (мост в открытое окно). Desktop: `http://127.0.0.1:47331/v1`.
 
 ### VaultEvent / audit (коллекция `events`)
 
@@ -378,8 +412,9 @@ npm run lint
 13. Установить MSVC Build Tools → проверить `npm run desktop`  
 14. Реальный cloud sync (+ подключить «Проверить обновления»)  
 15. ИИ-инструменты по файлам  
-16. Мониторинг / GitHub / реклама  
-17. Android · реальный power/deploy для серверов
+16. ~~GitHub read-only на проект (PAT + вкладка «Деплой»)~~ · мониторинг и рекламные API — дальше  
+17. Android · реальный power для серверов  
+18. ~~Локальный API CRUD~~ (bearer, 127.0.0.1). Облачный sync по-прежнему не выгружает файлы
 
 ---
 
@@ -408,3 +443,4 @@ npm run lint
 | 2026-11-14 | Toast overlap fix (cover 30%); contact modal stable height + embedded select; ServerForm CustomSelect; project Events + History tab |
 | 2026-11-16 | CustomSelect: nested dismiss layer (capture outside-click/Escape + stopPropagation) — клик вне модалки/по телу формы закрывает список, не саму форму клиента |
 | 2026-11-16 | **v0.1.2** — `exclusiveOverlay`: один открытый dropdown/меню на app; outside-click везде; новый список закрывает предыдущий; changelog |
+| 2026-11-16 | **v0.2.0** — локальный API CRUD; GitHub (`owner/repo`, PAT в `.lcc/github.enc`); CRUD доменов, документов, финансов, кампаний и ссылок на секреты. Работа агентов — в «Обновление» |
