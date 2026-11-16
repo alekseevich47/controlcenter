@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
+  <defs>
+    <radialGradient id="slime" cx="35%" cy="30%" r="72%">
+      <stop offset="0%" stop-color="#d4ff6a"/>
+      <stop offset="45%" stop-color="#c6f53d"/>
+      <stop offset="100%" stop-color="#9fd412"/>
+    </radialGradient>
+  </defs>
+  <g transform="translate(82 82) scale(7.1667)">
+    <path
+      fill="url(#slime)"
+      d="M62 8c22 2 42 18 46 38 4 22-8 44-28 52-18 8-42 4-54-12-14-18-12-46 4-60C40 14 50 7 62 8Z"
+    />
+    <rect
+      x="52"
+      y="34"
+      width="16"
+      height="48"
+      rx="5"
+      transform="rotate(12 60 58)"
+      fill="#1a1d27"
+    />
+  </g>
+</svg>
