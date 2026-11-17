@@ -24,6 +24,7 @@
     "allow-local-api-stop",
     "allow-local-api-set-token",
     "allow-local-api-respond",
+    "allow-apply-app-update",
     "dialog:default",
     "fs:default",
     "fs:allow-app-read-recursive",

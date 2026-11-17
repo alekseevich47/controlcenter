@@ -149,7 +149,7 @@ controlcenter/
 │   ├── pages/            # + HistoryPage, UpdatesPage, ClientsPage (CRUD)
 │   ├── api/              # vaultApi, HTTP-диспетчер, LocalApiHost, dev-мост
 │   ├── github/           # parse slug, проверка токена, клиент api.github.com
-│   ├── updates/          # changelog.ts — история релизов для /updates
+│   ├── updates/          # changelog, проверка GitHub main, кэш pending, apply
 │   ├── version.ts        # APP_VERSION / APP_BUILD / APP_CHANNEL
 │   └── vault/
 │       ├── types.ts          # + HistoryPrefs / Client.contacts / Project.clientId
@@ -189,7 +189,7 @@ controlcenter/
 | `/finance` | FinancePage | расходы, CRUD |
 | `/secrets` | SecretsPage | SecretRef (маршрут жив; **пункта в сайдбаре нет** — секреты в вкладке проекта). Только имя и место, без значений |
 | `/history` | HistoryPage | журнал изменений + diff; topbar — «Поиск в истории...» |
-| `/updates` | UpdatesPage | версия/сборка, changelog (`src/updates/changelog.ts`), кнопка «Проверить обновления» (stub) |
+| `/updates` | UpdatesPage | версия/сборка, changelog, проверка GitHub `main`, кнопка «Обновить» |
 | `/settings` | SettingsPage | путь vault, prefs, GitHub, локальный API, блок «История» (purge + capture), lock, sync mark |
 
 Сайдбар: Главная · Проекты · Серверы · Домены и DNS · SEO · Клиенты · Документация · Финансы · **История** · **Обновление** · Настройки.
@@ -331,7 +331,9 @@ UI (Settings → «История»):
 ### Обновления приложения (`/updates`)
 
 - Данные: `src/version.ts` (`APP_VERSION` ← Vite `__APP_VERSION__` из `package.json`; `APP_BUILD`, `APP_CHANNEL=local`) + `src/updates/changelog.ts` (ручной журнал, дополнять при релизах).
-- UI: `UpdatesPage` — карточка версии/сборки/канала/среды; список релизов + детальная панель; кнопка «Проверить обновления» с abortable delay + toast (без сети — cloud sync ещё нет).
+- Проверка: `fetchRemoteRelease` читает только `update-manifest.json` (fallback — `package.json`) и SHA коммита `main` на `github.com/alekseevich47/controlcenter`. Сборка — 7 символов SHA. Сравнение — строгий semver.
+- UI: «Проверить обновления» открывает окно (версия, сборка, что нового, «Обновить» / «Позже»). «Позже» оставляет кнопку «Обновить». Состояние в `localStorage` (`lcc.update.pending.v1`). При старте тихая проверка без окна; если релиз новее — кнопка сразу «Обновить».
+- Установка: только в Tauri из git-клона этого репозитория. `git fetch` + `merge --ff-only origin/main`. Грязное дерево и свои коммиты останавливают команду. `npm install` — если изменились package.json / lock. Затем перезапуск `npm run desktop`. В браузере установка не пишется на диск.
 - Иконка сайдбара: `IconRefresh`.
 
 Дальше (ещё не файлы): Environments, attachments, Member/ACL.
@@ -406,11 +408,11 @@ npm run lint
 7. ~~История (audit log + diff) в сайдбаре; topbar search → HistoryPage~~  
 8. ~~Глобальный поиск (дропдаун + бейджи разделов; история отдельно; лупа↔clear)~~  
 9. ~~Настройки истории: purge по периоду + матрица «Фиксировать в истории»~~  
-10. ~~Раздел «Обновление»: версия/сборка + changelog + stub проверки~~  
+10. ~~Раздел «Обновление»: версия/сборка + changelog + проверка GitHub и fast-forward~~  
 11. ~~Клиенты CRUD + деталка + ПКМ + контакты (phone/tg/MAX/VK/WA/email) + id~~  
 12. ~~Маски контактов + CustomSelect + Client↔Project (`clientId` / `projectIds`)~~  
 13. Установить MSVC Build Tools → проверить `npm run desktop`  
-14. Реальный cloud sync (+ подключить «Проверить обновления»)  
+14. Реальный cloud sync vault (проверка версии репозитория уже есть)  
 15. ИИ-инструменты по файлам  
 16. ~~GitHub read-only на проект (PAT + вкладка «Деплой»)~~ · мониторинг и рекламные API — дальше  
 17. Android · реальный power для серверов  
@@ -444,3 +446,4 @@ npm run lint
 | 2026-11-16 | CustomSelect: nested dismiss layer (capture outside-click/Escape + stopPropagation) — клик вне модалки/по телу формы закрывает список, не саму форму клиента |
 | 2026-11-16 | **v0.1.2** — `exclusiveOverlay`: один открытый dropdown/меню на app; outside-click везде; новый список закрывает предыдущий; changelog |
 | 2026-11-16 | **v0.2.0** — локальный API CRUD; GitHub (`owner/repo`, PAT в `.lcc/github.enc`); CRUD доменов, документов, финансов, кампаний и ссылок на секреты. Работа агентов — в «Обновление» |
+| 2026-11-17 | **v0.2.1** — проверка версии `main` на GitHub; окно релиза; кнопка «Обновить» переживает перезапуск; установка fast-forward только из git-клона |
