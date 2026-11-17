@@ -1,5 +1,6 @@
 import { BrowserRouter, HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { ToastProvider } from './components/ToastProvider'
+import { UpdateProvider } from './updates/UpdateProvider'
 import { UnlockScreen } from './components/UnlockScreen'
 import { useSuppressNativeContextMenu } from './hooks/useAppChrome'
 import { AppSearchProvider } from './hooks/useAppSearch'
@@ -58,14 +59,16 @@ function Gate() {
 
 export default function App() {
   return (
-    <VaultProvider>
-      <ToastProvider>
-        <AppSearchProvider>
-          <Router>
-            <Gate />
-          </Router>
-        </AppSearchProvider>
-      </ToastProvider>
-    </VaultProvider>
+    <UpdateProvider>
+      <VaultProvider>
+        <ToastProvider>
+          <AppSearchProvider>
+            <Router>
+              <Gate />
+            </Router>
+          </AppSearchProvider>
+        </ToastProvider>
+      </VaultProvider>
+    </UpdateProvider>
   )
 }

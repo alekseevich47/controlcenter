@@ -1,6 +1,6 @@
 /** Единый номер версии UI (синхронизируется с package.json через Vite define). */
 export const APP_VERSION: string =
-  typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.2.0'
+  typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.2.1'
 
 /**
  * Метка сборки. Пока совпадает с semver; при CI можно подставлять

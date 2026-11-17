@@ -1,6 +1,8 @@
 mod local_api;
+mod updater;
 
 use local_api::{local_api_respond, local_api_set_token, local_api_start, local_api_stop, LocalApi};
+use updater::apply_app_update;
 use tauri::{include_image, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
 
 /// Logical mins from `tauri.conf.json` → windows.minWidth / minHeight.
@@ -17,7 +19,8 @@ pub fn run() {
       local_api_start,
       local_api_stop,
       local_api_set_token,
-      local_api_respond
+      local_api_respond,
+      apply_app_update
     ])
     .setup(|app| {
       if let Some(window) = app.get_webview_window("main") {

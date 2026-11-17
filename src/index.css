@@ -3416,3 +3416,100 @@ tr.entity-focus td {
     max-height: none;
   }
 }
+
+/* —— Update offer —— */
+.update-offer-backdrop {
+  animation: update-offer-fade 0.22s ease;
+}
+
+.update-offer-card {
+  width: min(480px, 100%);
+  background: var(--card-solid);
+  animation: update-offer-in 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.update-offer-meta {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.update-offer-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #f4f6f1;
+  border: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.update-offer-line > span {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.update-offer-value {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.update-offer-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-align: right;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.update-offer-label {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.update-offer-card .updates-highlights {
+  margin-bottom: 2px;
+}
+
+.update-offer-card .btn:disabled {
+  opacity: 0.68;
+  cursor: default;
+  transform: none;
+  box-shadow: none;
+}
+
+@keyframes update-offer-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes update-offer-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .update-offer-backdrop,
+  .update-offer-card {
+    animation: none;
+  }
+}

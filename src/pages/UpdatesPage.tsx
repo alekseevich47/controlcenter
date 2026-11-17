@@ -1,34 +1,51 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { IconRefresh } from '../components/Icons'
 import { useToast } from '../components/ToastProvider'
+import { UpdateOfferModal } from '../components/UpdateOfferModal'
 import {
   CHANGELOG,
   formatChangelogDate,
   type ChangelogEntry,
 } from '../updates/changelog'
+import { useUpdates } from '../updates/UpdateProvider'
 import { APP_BUILD, APP_CHANNEL, APP_VERSION } from '../version'
 import { isTauri } from '../vault/runtime'
 
-const CHECK_MS = 1400
-
-type CheckPhase = 'idle' | 'checking' | 'done'
-
 export function UpdatesPage() {
   const { notify } = useToast()
+  const {
+    available,
+    checking,
+    applying,
+    lastCheckedAt,
+    offerOpen,
+    openOffer,
+    closeOffer,
+    checkNow,
+    applyNow,
+  } = useUpdates()
   const [selectedId, setSelectedId] = useState<string>(CHANGELOG[0]?.id ?? '')
-  const [phase, setPhase] = useState<CheckPhase>('idle')
-  const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const headingId = useId()
+  const alive = useRef(true)
+  const applyLock = useRef(false)
   const runtime = isTauri() ? 'Tauri (диск ПК)' : 'браузер (IndexedDB)'
 
-  const selected =
-    CHANGELOG.find((e) => e.id === selectedId) ?? CHANGELOG[0] ?? null
+  const selected = CHANGELOG.find((entry) => entry.id === selectedId) ?? CHANGELOG[0] ?? null
+  const busy = checking || applying
+  const label = applying
+    ? 'Обновляем…'
+    : checking
+      ? 'Проверяем…'
+      : available
+        ? 'Обновить'
+        : 'Проверить обновления'
 
   useEffect(() => {
+    alive.current = true
     return () => {
-      abortRef.current?.abort()
-      abortRef.current = null
+      alive.current = false
     }
   }, [])
 
@@ -36,47 +53,67 @@ export function UpdatesPage() {
     setSelectedId(entry.id)
   }
 
-  async function onCheckUpdates() {
-    if (phase === 'checking') return
-
-    abortRef.current?.abort()
-    const ac = new AbortController()
-    abortRef.current = ac
-    setPhase('checking')
-
+  async function runApply() {
+    if (applyLock.current) return
+    applyLock.current = true
     try {
-      await delay(CHECK_MS, ac.signal)
-      if (ac.signal.aborted) return
-      const when = new Date().toISOString()
-      setLastCheckedAt(when)
-      setPhase('done')
-      notify({
-        message: 'Облачный канал обновлений ещё не подключён — вы на актуальной локальной сборке',
-        tone: 'info',
-      })
-    } catch {
-      if (!ac.signal.aborted) setPhase('idle')
+      const result = await applyNow()
+      if (!alive.current) return
+      setConfirmOpen(false)
+      const message = result.message.trim() || (result.ok ? 'LCC обновлён' : 'Не удалось обновить LCC')
+      notify({ message, tone: result.ok ? 'success' : 'danger' })
     } finally {
-      if (abortRef.current === ac) abortRef.current = null
+      applyLock.current = false
     }
   }
+
+  async function onCheckUpdates() {
+    const result = await checkNow()
+    if (!alive.current) return
+    if (result.status === 'available') {
+      openOffer()
+      return
+    }
+    if (result.status === 'current') {
+      notify({ message: `Установлена актуальная версия v${APP_VERSION}`, tone: 'info' })
+      return
+    }
+    if (result.message && result.message !== 'Проверка прервана') {
+      notify({ message: result.message, tone: 'danger' })
+    }
+  }
+
+  function onPrimaryClick() {
+    if (busy) return
+    if (available) {
+      setConfirmOpen(true)
+      return
+    }
+    void onCheckUpdates()
+  }
+
+  const note = available
+    ? `Доступна v${available.version}, сборка ${available.build}`
+    : lastCheckedAt
+      ? `Последняя проверка: ${formatCheckedAt(lastCheckedAt)}`
+      : null
 
   return (
     <>
       <div className="page-head">
         <div>
           <h1 id={headingId}>Обновление</h1>
-          <p>Текущая сборка, журнал релизов и проверка облачных апдейтов</p>
+          <p>Текущая сборка, журнал релизов и проверка обновлений</p>
         </div>
         <button
           className="btn btn-primary updates-check-btn"
           type="button"
-          onClick={() => void onCheckUpdates()}
-          disabled={phase === 'checking'}
-          aria-busy={phase === 'checking'}
+          onClick={onPrimaryClick}
+          disabled={busy}
+          aria-busy={busy}
         >
-          <IconRefresh className={phase === 'checking' ? 'spin' : undefined} />
-          {phase === 'checking' ? 'Проверяем…' : 'Проверить обновления'}
+          <IconRefresh width={16} height={16} className={busy ? 'spin' : undefined} />
+          {label}
         </button>
       </div>
 
@@ -104,11 +141,11 @@ export function UpdatesPage() {
             <strong className="updates-stat-value">{runtime}</strong>
           </div>
         </div>
-        <p className="updates-current-note">
-          {lastCheckedAt
-            ? `Последняя проверка: ${formatCheckedAt(lastCheckedAt)}. Канал поставки появится вместе с cloud sync.`
-            : 'Проверка обновлений — заглушка: облачного backend пока нет. История ниже ведётся вручную в репозитории.'}
-        </p>
+        {note ? (
+          <p className="updates-current-note" aria-live="polite">
+            {note}
+          </p>
+        ) : null}
       </section>
 
       <div className={`updates-layout${selected ? ' has-detail' : ''}`}>
@@ -141,9 +178,7 @@ export function UpdatesPage() {
                       </time>
                     </div>
                     <strong className="updates-title">{entry.title}</strong>
-                    <span className="updates-preview">
-                      {entry.highlights[0] ?? 'Без описания'}
-                    </span>
+                    <span className="updates-preview">{entry.highlights[0] ?? 'Без описания'}</span>
                   </button>
                 </li>
               )
@@ -172,23 +207,31 @@ export function UpdatesPage() {
           </article>
         ) : null}
       </div>
+
+      <UpdateOfferModal
+        open={offerOpen}
+        update={available}
+        applying={applying}
+        onClose={closeOffer}
+        onApply={() => void runApply()}
+      />
+
+      {available ? (
+        <ConfirmDialog
+          open={confirmOpen}
+          title={`Обновить LCC до v${available.version}?`}
+          message={`${available.title ? `«${available.title}». ` : ''}Подтянутся файлы из origin/main, только fast-forward. Локальные правки не стираются.`}
+          confirmLabel="Обновить"
+          cancelLabel="Отмена"
+          busy={applying}
+          onConfirm={() => void runApply()}
+          onCancel={() => {
+            if (!applying) setConfirmOpen(false)
+          }}
+        />
+      ) : null}
     </>
   )
-}
-
-function delay(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal.aborted) {
-      reject(new DOMException('Aborted', 'AbortError'))
-      return
-    }
-    const t = window.setTimeout(() => resolve(), ms)
-    const onAbort = () => {
-      window.clearTimeout(t)
-      reject(new DOMException('Aborted', 'AbortError'))
-    }
-    signal.addEventListener('abort', onAbort, { once: true })
-  })
 }
 
 function formatCheckedAt(iso: string): string {
