@@ -1,5 +1,6 @@
 import { normalizeClient } from '../vault/clientContacts'
 import { isSafeEntityId } from '../vault/ids'
+import { normalizeServer, parseServerFields } from '../vault/serverModel'
 import { isGithubRepoLink, parseGithubRepo } from '../github/repo'
 import { normalizeProjectStatus, statusKindFor } from '../vault/projectStatus'
 import { normalizeServerStatus, serverStatusKind } from '../vault/serverStatus'
@@ -39,6 +40,9 @@ const FORBIDDEN_KEYS = new Set([
   'token',
   'credential',
   'credentials',
+  'privateKey',
+  'passphrase',
+  'authorization',
 ])
 
 const PREFIX: Record<WritableCollection, string> = {
@@ -67,6 +71,27 @@ export function assertPlainObject(value: unknown): Record<string, unknown> {
     }
   }
   return row
+}
+
+/** Любой объектный ключ из запрещённого набора на любой глубине. `secretId` и `passwordRef` не входят. */
+export function assertNoSecretKeys(value: unknown): void {
+  const seen = new WeakSet<object>()
+  const walk = (node: unknown) => {
+    if (!node || typeof node !== 'object') return
+    if (seen.has(node)) return
+    seen.add(node)
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item)
+      return
+    }
+    for (const key of Object.keys(node as Record<string, unknown>)) {
+      if (FORBIDDEN_KEYS.has(key)) {
+        throw new ApiError(400, 'validation', 'Недопустимое поле в запросе')
+      }
+      walk((node as Record<string, unknown>)[key])
+    }
+  }
+  walk(value)
 }
 
 function str(value: unknown, max: number, fallback = ''): string {
@@ -112,6 +137,17 @@ function projectIdOf(value: unknown, fallback?: string): string | undefined {
   }
   const id = value.trim()
   if (!isSafeEntityId(id)) throw new ApiError(400, 'validation', 'Некорректный projectId')
+  return id
+}
+
+function serverIdOf(value: unknown, fallback?: string): string | undefined {
+  if (value === undefined) return fallback
+  if (value === null || value === '') return undefined
+  if (typeof value !== 'string') {
+    throw new ApiError(400, 'validation', 'serverId должен быть строкой')
+  }
+  const id = value.trim()
+  if (!isSafeEntityId(id)) throw new ApiError(400, 'validation', 'Некорректный serverId')
   return id
 }
 
@@ -232,15 +268,33 @@ export function buildClient(
   return normalizeClient(draft as Client)
 }
 
+/**
+ * Запись только `projectId` (старый API): правит первую привязку и сохраняет её root.
+ * `projectId: null` без `links` снимает все привязки. Если в теле есть `links`, они главные.
+ */
+function retargetProjectLinks(links: Server['links'], projectId: string | undefined): NonNullable<Server['links']> {
+  if (!projectId) return []
+  if (!links || links.length === 0) return [{ projectId }]
+  const [first, ...rest] = links
+  return [
+    { ...first, projectId },
+    ...rest.filter((link) => link.projectId !== projectId && link.projectId !== first.projectId),
+  ]
+}
+
 export function buildServer(
   input: Record<string, unknown>,
   now: string,
   current?: Server,
 ): Server {
+  assertNoSecretKeys(input)
   const status = normalizeServerStatus(
     input.status === undefined && current ? current.status : str(input.status, 40, 'Online'),
   )
-  return {
+  const projectId = projectIdOf(input.projectId, current?.projectId)
+  const extras = parseServerFields(input, current)
+  const legacyProjectWrite = input.links === undefined && input.projectId !== undefined
+  return normalizeServer({
     id: current?.id ?? newEntityId('servers'),
     ...baseTimes(now, current?.createdAt),
     name: input.name === undefined && current ? current.name : requireText(input.name ?? current?.name, 120, 'имя сервера'),
@@ -249,10 +303,12 @@ export function buildServer(
     role: input.role === undefined && current ? current.role : str(input.role, 120) || '—',
     status,
     statusKind: serverStatusKind(status),
-    projectId: projectIdOf(input.projectId, current?.projectId),
+    projectId,
     tags: tagsOf(input.tags, current?.tags),
     notes: notesOf(input.notes, current?.notes),
-  }
+    ...extras,
+    ...(legacyProjectWrite ? { links: retargetProjectLinks(extras.links, projectId) } : {}),
+  })
 }
 
 export function buildDomain(
@@ -275,6 +331,7 @@ export function buildDomain(
     ssl: input.ssl === undefined && current ? current.ssl : str(input.ssl, 80) || 'нет',
     project: input.project === undefined && current ? current.project : str(input.project, 120) || '—',
     projectId: projectIdOf(input.projectId, current?.projectId),
+    serverId: serverIdOf(input.serverId, current?.serverId),
     tags: tagsOf(input.tags, current?.tags),
     notes: notesOf(input.notes, current?.notes),
   }

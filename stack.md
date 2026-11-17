@@ -96,6 +96,7 @@
 | Данные | encrypted entity files; seed при создании vault |
 | Локальный API | `src/api/*`: JSON CRUD на `127.0.0.1`. Dev — middleware Vite `:5173/v1`. Desktop — `src-tauri/src/local_api.rs` `:47331/v1` |
 | GitHub | `src/github/*`: только `https://api.github.com`, PAT в `.lcc/github.enc` |
+| Spaceweb | `src/hosting/*`: JSON-RPC только `api.sweb.ru`, allowlist (список VPS, питание, журнал операций). `remoteBackup` не вызывается. Логин и пароль в `.lcc/spaceweb.enc` |
 | Окно | обычное (decorations); размер из `tauri.conf` (1440×900, min 1200×720); **без** auto-fullscreen; при старте clamp к **work area** монитора (панель задач / dock) в `lib.rs` |
 
 ### Системные зависимости для `npm run desktop`
@@ -111,7 +112,7 @@
 |------|-------------|
 | Cloud sync | реальная выгрузка зашифрованного снимка (Я.Диск / S3) |
 | Индекс | локальный SQLite / FTS по расшифрованным docs |
-| Мониторинг | внешний (watchdog / Uptime Kuma / Beszel) |
+| Мониторинг | UI и паспорт/питание Spaceweb живут в LCC; метрики гостя и бэкапы — свои, не панель хостера. Allowlist `api.sweb.ru`, без `remoteBackup` |
 | Android | отдельный клиент к той же схеме vault |
 
 ---
@@ -146,9 +147,11 @@ controlcenter/
 │   │                     # ClientContactModal, CustomSelect, ProjectHistory,
 │   │                     # ToastProvider, Skeleton, TopbarSearch,
 │   │                     # HistorySettingsBlock, AuditCaptureModal
-│   ├── pages/            # + HistoryPage, UpdatesPage, ClientsPage (CRUD)
+│   │   └── servers/      # карточка, превью, вкладки, питание, настройки
+│   ├── pages/            # + HistoryPage, UpdatesPage, ClientsPage, ServerWorkspacePage
 │   ├── api/              # vaultApi, HTTP-диспетчер, LocalApiHost, dev-мост
 │   ├── github/           # parse slug, проверка токена, клиент api.github.com
+│   ├── hosting/          # Spaceweb: клиент api.sweb.ru, токен, опрос VPS
 │   ├── updates/          # changelog, проверка GitHub main, кэш pending, apply
 │   ├── version.ts        # APP_VERSION / APP_BUILD / APP_CHANNEL
 │   └── vault/
@@ -167,6 +170,7 @@ controlcenter/
 │       ├── createFs.ts
 │       ├── session.ts
 │       ├── seed.ts
+│       ├── serverModel.ts    # links, provider, hostSnapshot, ssh, backup
 │       ├── VaultContext.tsx  # list / put / remove / purgeHistory (+ gated audit)
 │       ├── useCollection.ts
 │       └── runtime.ts
@@ -181,7 +185,8 @@ controlcenter/
 |------|----------|------------|
 | `/` | HomePage | дашборд из vault (без «Структура инфраструктуры») |
 | `/projects` | ProjectsPage | проекты, создание/редактирование, деталка с вкладками, архив, фильтры, context menu |
-| `/servers` | ServersPage | хосты (CRUD + power stub) через `ServersPanel` |
+| `/servers` | ServersPage | список и превью через `ServersPanel`. Опрос Spaceweb только на этом экране и на `/servers/:id/:tab` |
+| `/servers/:id/:tab` | ServerWorkspacePage | обзор, мониторинг, консоль, файлы, журналы, бэкапы, настройки |
 | `/domains` | DomainsPage | домены / DNS / SSL, CRUD + проект |
 | `/seo` | SeoPage | кампании, CRUD, канал `seo` / `ads` |
 | `/clients` | ClientsPage | клиенты: CRUD, деталка, ПКМ, контакты по каналам |
@@ -254,11 +259,24 @@ Overlays (`src/hooks/exclusiveOverlay.ts` + `useExclusiveOverlay`): один а�
 | Поле | Смысл |
 |------|--------|
 | `name`, `host`, `specs`, `role` | паспорт хоста |
-| `status` | `Online` · `Reserve` · `Offline` (`serverStatus.ts`) |
-| `statusKind` | `green` / `amber` / `red` |
-| `projectId` | опциональная привязка к проекту |
+| `description` | для чего этот хост |
+| `status`, `statusKind` | без хостера — ручные `Online` / `Reserve` / `Offline` (`green` / `amber` / `red`). У привязанного VPS статус пишет опрос: Online, Offline или текст текущей операции (amber) |
+| `links` | несколько проектов: `{ projectId, root?, database? }`. `projectId` сущности = `links[0]` |
+| `provider` | `{ kind: 'spaceweb', billingId }` или нет. Id только из списка кабинета, не свободный текст |
+| `hostSnapshot` | ip, os, plan, location, mac, isRunning, currentAction, checkedAt. Без паролей и токенов |
+| `ssh` | пользователь, порт, `auth`, `secretId` (ссылка на блоб, не сам ключ), отпечаток |
+| `backup` | политика своих копий LCC: куда, `passwordRef`, час, ретеншн. Это не бэкап хостера |
+| `notifyStatus` | письмо при смене статуса, без адресов и токенов |
 
-UI: `ServerFormModal` (create/edit), `ConfirmDialog` на delete, outline-кнопки edit / trash / power|play (power — stub, пишет Offline/online в vault). Общий `ServersPanel` на `/servers` и во вкладке проекта.
+Секреты кабинета лежат в `.lcc/spaceweb.enc` и в сущность сервера не копируются. Запись в vault — через `normalizeServer`.
+
+`Domain.serverId` — какой сервер обслуживает домен.
+
+UI: список и превью `ServersPanel` (`/servers` и вкладка проекта), полный экран `ServerWorkspacePage`. Питание только у `provider.kind === 'spaceweb'`: подтверждение, затем реальная команда в Spaceweb. Без провайдера кнопок питания нет. Удаление карточки и снятие привязки не удаляют VPS. Журнал вкладки — операции хостера (`logs`) и, после SSH, `journalctl`.
+
+SSH задаётся один раз: материал в `.lcc/ssh/{id}.enc`, в карточке только `secretId` и отпечаток. Консоль — PTY (`russh` + `@xterm/xterm`), курсор внутри терминала. Файлы — SFTP. Замеры CPU/RAM/диска пишутся в `.lcc/metrics/{id}.json.enc` и рисуются своим SVG. В браузерном `npm run dev` эти действия не исполняются.
+
+Бэкапы — restic на самом сервере (`ssh_restic`) и ручная копия на этот компьютер (`ssh_pull_tree` / `ssh_push_tree`). Пароль репозитория в `.lcc/backup/{id}.enc`. Папка на этом компьютере — `prefs.backup.localDir`. Методы `remoteBackup` Spaceweb не вызываются.
 
 ### Campaign
 
@@ -324,7 +342,7 @@ UI (Settings → «История»):
 - Клик по хиту → `/{section}?id={entityId}` (`SearchHit.to`); страница читает `useSearchFocus` / `useSearchHighlight`:
   - проекты → деталка (`selectedId`, архив при необходимости);
   - клиенты → деталка (`selectedId`);
-  - серверы → форма редактирования;
+  - серверы → превью (`?open=`);
   - остальные разделы → scroll + подсветка `.entity-focus` (~2.2с).
   `?id=` снимается replace после успеха (без path-сепараторов в id).
 
@@ -417,7 +435,7 @@ npm run lint
 14. Реальный cloud sync vault (проверка версии репозитория уже есть)  
 15. ИИ-инструменты по файлам  
 16. ~~GitHub read-only на проект (PAT + вкладка «Деплой»)~~ · мониторинг и рекламные API — дальше  
-17. Android · реальный power для серверов  
+17. ~~Реальное питание VPS, привязанных к Spaceweb~~ · Android — дальше  
 18. ~~Локальный API CRUD~~ (bearer, 127.0.0.1). Облачный sync по-прежнему не выгружает файлы
 
 ---
@@ -450,3 +468,5 @@ npm run lint
 | 2026-11-16 | **v0.2.0** — локальный API CRUD; GitHub (`owner/repo`, PAT в `.lcc/github.enc`); CRUD доменов, документов, финансов, кампаний и ссылок на секреты. Работа агентов — в «Обновление» |
 | 2026-11-17 | **v0.2.1** — проверка версии `main` на GitHub; окно релиза; кнопка «Обновить» переживает перезапуск; установка fast-forward только из git-клона |
 | 2026-11-17 | **v0.2.1** — скачивание установщика: спиннер и процент внутри кнопки; процент живёт в модуле и виден в топбаре при уходе со страницы; установщик заменяет только каталог приложения, vault и выбранная папка не входят в пакет и не удаляются |
+| 2026-11-17 | **v0.2.1** — панель серверов: несколько проектов, снимок хостера без секретов; список, превью и экран по вкладкам. Spaceweb: кабинет, паспорт, питание и журнал операций (`api.sweb.ru`, без `remoteBackup`). Метрики гостя и свои бэкапы — не панель хостера |
+| 2026-11-17 | **v0.2.1** — SSH один раз (`.lcc/ssh`), консоль PTY, SFTP, замеры в `.lcc/metrics`. Свои бэкапы restic и ручная копия на этот компьютер. Пароль репозитория в `.lcc/backup` |

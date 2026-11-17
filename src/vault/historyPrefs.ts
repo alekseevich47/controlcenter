@@ -144,14 +144,28 @@ export function normalizeHistoryPrefs(raw: unknown): HistoryPrefs {
   return { capture: { entities, events } }
 }
 
+/** Путь каталога бэкапов на этой машине. Каталог может ещё не существовать. */
+function normalizeBackupPrefs(raw: unknown): { localDir: string } | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const localDir = (raw as { localDir?: unknown }).localDir
+  if (typeof localDir !== 'string') return undefined
+  const trimmed = localDir.trim().slice(0, 260)
+  if (!trimmed) return undefined
+  return { localDir: trimmed }
+}
+
 /** Deep-merge prefs при чтении с диска (старые vault без history). */
 export function normalizeVaultPrefs(raw: Partial<VaultPrefs> | null | undefined): VaultPrefs {
-  return {
+  const backup = normalizeBackupPrefs(raw?.backup)
+  const next: VaultPrefs = {
     ...DEFAULT_PREFS,
     ...(raw ?? {}),
     localApi: raw?.localApi === true,
     history: normalizeHistoryPrefs(raw?.history ?? DEFAULT_PREFS.history),
   }
+  if (backup) next.backup = backup
+  else delete next.backup
+  return next
 }
 
 export type SemanticAuditKind =
@@ -257,6 +271,7 @@ export const SIGNIFICANT_PREFS_KEYS = new Set([
   'role',
   'history',
   'vaultPath',
+  'backup',
 ])
 
 export function prefsPatchIsSignificant(patch: Partial<VaultPrefs>): boolean {

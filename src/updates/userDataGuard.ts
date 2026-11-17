@@ -11,6 +11,7 @@ const LCC_DIR = '.lcc'
 /** Файлы `.lcc` и служебные файлы внутри vault. */
 const VAULT_FILE_NAMES: ReadonlySet<string> = new Set([
   'github.enc',
+  'spaceweb.enc',
   'api-token.enc',
   'prefs.json',
   'probe.enc',

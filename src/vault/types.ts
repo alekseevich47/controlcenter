@@ -87,6 +87,11 @@ export interface VaultPrefs {
   localApi: boolean
   /** Журнал: что писать в events и политики очистки */
   history: HistoryPrefs
+  /**
+   * Каталог локальных бэкапов на этой машине.
+   * Только путь, без паролей и ключей.
+   */
+  backup?: { localDir?: string }
 }
 
 export interface EntityBase {
@@ -168,6 +173,53 @@ export interface Client extends EntityBase {
 
 export type ServerStatusKind = 'green' | 'amber' | 'red'
 
+export interface ServerProjectLink {
+  projectId: string
+  /** Absolute directory on that host, e.g. /var/www/tennis42 */
+  root?: string
+  database?: { engine: 'postgres' | 'sqlite'; name: string }
+}
+
+export interface ServerProviderLink {
+  kind: 'spaceweb'
+  billingId: string
+}
+
+export interface ServerHostSnapshot {
+  ip?: string
+  os?: string
+  plan?: string
+  location?: string
+  mac?: string
+  isRunning?: boolean
+  currentAction?: string
+  checkedAt?: string
+}
+
+export interface ServerSshProfile {
+  user: string
+  port: number
+  auth: 'key' | 'password'
+  /** Id of the encrypted blob in .lcc/ssh/, not the key itself */
+  secretId: string
+  hostFingerprint?: string
+}
+
+export interface ServerBackupPolicy {
+  destination:
+    | { kind: 'local'; path: string }
+    | { kind: 'server'; serverId: string; path: string }
+  /** Id of .lcc/backup/{serverId}.enc, not the password */
+  passwordRef: string
+  /** Local hour 0–23. Default conceptually 3. */
+  hour: number
+  retention: { keepDaily: number; keepWeekly: number; keepMonthly: number }
+  includeProjectIds: string[]
+  extraPaths: string[]
+  unit?: string
+  lastRun?: { at: string; ok: boolean; error?: string }
+}
+
 export interface Server extends EntityBase {
   name: string
   host: string
@@ -175,6 +227,14 @@ export interface Server extends EntityBase {
   role: string
   status: string
   statusKind: ServerStatusKind
+  description?: string
+  links?: ServerProjectLink[]
+  provider?: ServerProviderLink
+  hostSnapshot?: ServerHostSnapshot
+  ssh?: ServerSshProfile
+  backup?: ServerBackupPolicy
+  /** Письмо при смене статуса. Без адресов и токенов. */
+  notifyStatus?: boolean
 }
 
 export interface Domain extends EntityBase {
@@ -184,6 +244,8 @@ export interface Domain extends EntityBase {
   expires: string
   ssl: string
   project: string
+  /** Сервер, на котором обслуживается домен */
+  serverId?: string
 }
 
 export interface Doc extends EntityBase {

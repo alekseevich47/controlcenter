@@ -6,6 +6,30 @@ import { lccLocalApiPlugin } from './vite.localApi.ts'
 const host = process.env.TAURI_DEV_HOST
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8')) as { version: string }
 
+/** Только эти пути dev-сервера уходят на api.sweb.ru. Другие хосты и классы не проксируются. */
+const SWEB_PROXY_PATHS: ReadonlySet<string> = new Set([
+  '/sweb/vps',
+  '/sweb/vps/ip',
+  '/sweb/notAuthorized',
+  '/sweb/notAuthorized/',
+])
+
+function swebDevBypass(url: string | undefined): string | undefined {
+  const raw = url ?? ''
+  if (raw.includes('..') || raw.includes('\\') || raw.includes('%') || raw.includes('?') || raw.includes('#')) {
+    return '/__sweb_blocked'
+  }
+  return SWEB_PROXY_PATHS.has(raw) ? undefined : '/__sweb_blocked'
+}
+
+function swebDevRewrite(path: string): string {
+  const bare = path.split('?')[0] ?? ''
+  if (bare === '/sweb/vps') return '/vps'
+  if (bare === '/sweb/vps/ip') return '/vps/ip'
+  if (bare === '/sweb/notAuthorized' || bare === '/sweb/notAuthorized/') return '/notAuthorized/'
+  return '/__lcc_sweb_blocked'
+}
+
 export default defineConfig({
   plugins: [react(), lccLocalApiPlugin()],
   clearScreen: false,
@@ -26,6 +50,17 @@ export default defineConfig({
       : undefined,
     watch: {
       ignored: ['**/src-tauri/**'],
+    },
+    proxy: {
+      '/sweb': {
+        target: 'https://api.sweb.ru',
+        changeOrigin: true,
+        secure: true,
+        rewrite: swebDevRewrite,
+        bypass(req) {
+          return swebDevBypass(req.url)
+        },
+      },
     },
   },
 })

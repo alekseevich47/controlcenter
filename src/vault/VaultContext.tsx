@@ -26,7 +26,9 @@ import {
 } from './historyPrefs'
 import { githubWhoAmI } from '../github/client'
 import { assertGithubToken } from '../github/token'
-import { VaultSession } from './session'
+import { bindSpacewebAuth, fetchSpacewebToken } from '../hosting/runtime'
+import { clearSpacewebToken, setSpacewebToken } from '../hosting/session'
+import { VaultSession, type SpacewebAuthRecord } from './session'
 import type { Collection, CollectionMap, VaultEvent, VaultPrefs } from './types'
 
 type Status = 'booting' | 'locked' | 'unlocked'
@@ -54,6 +56,22 @@ interface VaultContextValue {
   connectGithub: (token: string) => Promise<{ login: string }>
   disconnectGithub: () => Promise<void>
   readGithubToken: () => Promise<string | null>
+  /** Логин кабинета Spaceweb. Пароль и токен в это поле не входят. */
+  spacewebLogin: string | null
+  connectSpaceweb: (login: string, password: string) => Promise<{ login: string }>
+  disconnectSpaceweb: () => Promise<void>
+  /** Пароль только чтобы обновить токен. Не сохранять его в состоянии экрана. */
+  readSpacewebAuth: () => Promise<SpacewebAuthRecord | null>
+  readSshMaterial: (id: string) => Promise<{ auth: 'key' | 'password'; material: string } | null>
+  writeSshMaterial: (id: string, auth: 'key' | 'password', material: string) => Promise<void>
+  removeSshMaterial: (id: string) => Promise<void>
+  readBackupPassword: (id: string) => Promise<string | null>
+  writeBackupPassword: (id: string, password: string) => Promise<void>
+  readMetricSamples: (id: string) => Promise<{ t: number; cpu: number; ram: number; disk: number; rx: number; tx: number }[]>
+  writeMetricSamples: (
+    id: string,
+    samples: { t: number; cpu: number; ram: number; disk: number; rx: number; tx: number }[],
+  ) => Promise<void>
   setLocalApiEnabled: (enabled: boolean) => Promise<void>
   rotateApiToken: () => Promise<string>
   /** Удаляет события истории по фильтру. Возвращает число удалённых. */
@@ -95,6 +113,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [refreshTick, setRefreshTick] = useState(0)
   const [isTauriRuntime, setIsTauriRuntime] = useState(false)
   const [githubLogin, setGithubLogin] = useState<string | null>(null)
+  const [spacewebLogin, setSpacewebLogin] = useState<string | null>(null)
   const [apiToken, setApiToken] = useState<string | null>(null)
 
   const hydrateIntegrations = useCallback(async (current: VaultSession) => {
@@ -103,6 +122,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setGithubLogin(auth?.login ?? null)
     } catch {
       setGithubLogin(null)
+    }
+    try {
+      const auth = await current.readSpacewebAuth()
+      setSpacewebLogin(auth?.login ?? null)
+      if (!auth) clearSpacewebToken()
+    } catch {
+      setSpacewebLogin(null)
+      clearSpacewebToken()
     }
     try {
       if (current.prefs.localApi) {
@@ -144,6 +171,21 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    bindSpacewebAuth(async () => {
+      if (!session?.unlocked) return null
+      try {
+        return await session.readSpacewebAuth()
+      } catch {
+        return null
+      }
+    })
+    return () => {
+      bindSpacewebAuth(async () => null)
+      clearSpacewebToken()
+    }
+  }, [session])
 
   useEffect(() => {
     const onLeave = () => {
@@ -204,12 +246,15 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   )
 
   const lock = useCallback(() => {
+    clearSpacewebToken()
     if (session?.unlocked) {
       void writeSystemEvent(session, 'vaultLock', 'Vault заблокирован')
         .catch(() => undefined)
         .finally(() => {
           session.lock()
+          clearSpacewebToken()
           setGithubLogin(null)
+          setSpacewebLogin(null)
           setApiToken(null)
           setStatus('locked')
         })
@@ -217,6 +262,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     }
     session?.lock()
     setGithubLogin(null)
+    setSpacewebLogin(null)
     setApiToken(null)
     setStatus('locked')
   }, [session])
@@ -244,6 +290,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setPath(p)
       setPrefs(await next.loadPrefs())
       next.lock()
+      setSpacewebLogin(null)
+      clearSpacewebToken()
       setStatus('locked')
     }
   }, [session])
@@ -331,6 +379,40 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     if (!session?.unlocked) return null
     const auth = await session.readGithubAuth()
     return auth?.token ?? null
+  }, [session])
+
+  const connectSpaceweb = useCallback(
+    async (login: string, password: string) => {
+      if (!session?.unlocked) throw new Error('Vault заблокирован')
+      const token = await fetchSpacewebToken(login, password)
+      if (!session.unlocked) throw new Error('Vault заблокирован')
+      const cleanLogin = login.trim()
+      await session.writeSpacewebAuth({
+        login: cleanLogin,
+        password,
+        updatedAt: new Date().toISOString(),
+      })
+      if (!session.unlocked) {
+        clearSpacewebToken()
+        throw new Error('Vault заблокирован')
+      }
+      setSpacewebToken(token)
+      setSpacewebLogin(cleanLogin)
+      return { login: cleanLogin }
+    },
+    [session],
+  )
+
+  const disconnectSpaceweb = useCallback(async () => {
+    if (!session?.unlocked) throw new Error('Vault заблокирован')
+    await session.clearSpacewebAuth()
+    clearSpacewebToken()
+    setSpacewebLogin(null)
+  }, [session])
+
+  const readSpacewebAuth = useCallback(async () => {
+    if (!session?.unlocked) return null
+    return session.readSpacewebAuth()
   }, [session])
 
   const setLocalApiEnabled = useCallback(
@@ -421,6 +503,47 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     [session, bump],
   )
 
+  const readSshMaterial = useCallback(
+    async (id: string) => (session ? session.readSshMaterial(id) : null),
+    [session],
+  )
+  const writeSshMaterial = useCallback(
+    async (id: string, auth: 'key' | 'password', material: string) => {
+      if (!session) throw new Error('Vault закрыт')
+      await session.writeSshMaterial(id, auth, material)
+    },
+    [session],
+  )
+  const removeSshMaterial = useCallback(
+    async (id: string) => {
+      if (!session) throw new Error('Vault закрыт')
+      await session.removeSshMaterial(id)
+    },
+    [session],
+  )
+  const readBackupPassword = useCallback(
+    async (id: string) => (session ? session.readBackupPassword(id) : null),
+    [session],
+  )
+  const writeBackupPassword = useCallback(
+    async (id: string, password: string) => {
+      if (!session) throw new Error('Vault закрыт')
+      await session.writeBackupPassword(id, password)
+    },
+    [session],
+  )
+  const readMetricSamples = useCallback(
+    async (id: string) => (session ? session.readMetricSamples(id) : []),
+    [session],
+  )
+  const writeMetricSamples = useCallback(
+    async (id: string, samples: { t: number; cpu: number; ram: number; disk: number; rx: number; tx: number }[]) => {
+      if (!session) throw new Error('Vault закрыт')
+      await session.writeMetricSamples(id, samples)
+    },
+    [session],
+  )
+
   const purgeHistory = useCallback(
     async (filter: HistoryPurgeFilter) => {
       if (!session?.unlocked) throw new Error('Vault заблокирован')
@@ -463,10 +586,21 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       put,
       remove,
       githubLogin,
+      spacewebLogin,
       apiToken,
       connectGithub,
       disconnectGithub,
       readGithubToken,
+      connectSpaceweb,
+      disconnectSpaceweb,
+      readSpacewebAuth,
+      readSshMaterial,
+      writeSshMaterial,
+      removeSshMaterial,
+      readMetricSamples,
+      writeMetricSamples,
+      readBackupPassword,
+      writeBackupPassword,
       setLocalApiEnabled,
       rotateApiToken,
       purgeHistory,
@@ -490,10 +624,21 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       put,
       remove,
       githubLogin,
+      spacewebLogin,
       apiToken,
       connectGithub,
       disconnectGithub,
       readGithubToken,
+      connectSpaceweb,
+      disconnectSpaceweb,
+      readSpacewebAuth,
+      readSshMaterial,
+      writeSshMaterial,
+      removeSshMaterial,
+      readMetricSamples,
+      writeMetricSamples,
+      readBackupPassword,
+      writeBackupPassword,
       setLocalApiEnabled,
       rotateApiToken,
       purgeHistory,

@@ -31,11 +31,18 @@ import {
 } from './types'
 
 const GITHUB_PATH = '.lcc/github.enc'
+const SPACEWEB_PATH = '.lcc/spaceweb.enc'
 const API_TOKEN_PATH = '.lcc/api-token.enc'
 
 export type GithubAuthRecord = {
   token: string
   login: string
+  updatedAt: string
+}
+
+export type SpacewebAuthRecord = {
+  login: string
+  password: string
   updatedAt: string
 }
 
@@ -168,6 +175,26 @@ export class VaultSession {
     if (await this.fs.exists(GITHUB_PATH)) await this.fs.remove(GITHUB_PATH)
   }
 
+  async readSpacewebAuth(): Promise<SpacewebAuthRecord | null> {
+    const row = await this.readEnc<SpacewebAuthRecord>(SPACEWEB_PATH)
+    if (!row || typeof row.login !== 'string' || typeof row.password !== 'string') return null
+    if (!row.login.trim() || !row.password) return null
+    return { login: row.login, password: row.password, updatedAt: row.updatedAt ?? '' }
+  }
+
+  async writeSpacewebAuth(auth: SpacewebAuthRecord): Promise<void> {
+    await this.writeEnc(SPACEWEB_PATH, {
+      login: auth.login,
+      password: auth.password,
+      updatedAt: auth.updatedAt,
+    })
+  }
+
+  async clearSpacewebAuth(): Promise<void> {
+    this.requireKey()
+    if (await this.fs.exists(SPACEWEB_PATH)) await this.fs.remove(SPACEWEB_PATH)
+  }
+
   async readApiToken(): Promise<ApiTokenRecord | null> {
     const row = await this.readEnc<ApiTokenRecord>(API_TOKEN_PATH)
     if (!row || typeof row.token !== 'string' || !row.token.startsWith('lcc_')) return null
@@ -225,6 +252,76 @@ export class VaultSession {
   async remove(collection: Collection, id: string): Promise<void> {
     this.requireKey()
     await this.fs.remove(this.entityPath(collection, id))
+  }
+
+  async readBackupPassword(id: string): Promise<string | null> {
+    const safe = assertSafeEntityId(id)
+    const row = await this.readEnc<{ password?: string }>(`.lcc/backup/${safe}.enc`)
+    if (!row || typeof row.password !== 'string' || row.password.length < 12) return null
+    return row.password
+  }
+
+  async writeBackupPassword(id: string, password: string): Promise<void> {
+    const safe = assertSafeEntityId(id)
+    if (password.length < 12 || password.length > 128 || /[\r\n]/.test(password)) {
+      throw new Error('Пароль репозитория не подходит')
+    }
+    await this.fs.mkdir('.lcc/backup')
+    await this.writeEnc(`.lcc/backup/${safe}.enc`, { password, updatedAt: new Date().toISOString() })
+  }
+
+  async readSshMaterial(id: string): Promise<{ auth: 'key' | 'password'; material: string } | null> {
+    const safe = assertSafeEntityId(id)
+    const row = await this.readEnc<{ auth?: string; material?: string }>(`.lcc/ssh/${safe}.enc`)
+    if (!row || (row.auth !== 'key' && row.auth !== 'password')) return null
+    if (typeof row.material !== 'string' || !row.material.trim()) return null
+    return { auth: row.auth, material: row.material }
+  }
+
+  async writeSshMaterial(id: string, auth: 'key' | 'password', material: string): Promise<void> {
+    const safe = assertSafeEntityId(id)
+    const body = material.replace(/\r\n/g, '\n')
+    if (!body.trim() || body.length > 32_000) throw new Error('Ключ или пароль пустой или слишком длинный')
+    await this.fs.mkdir('.lcc/ssh')
+    await this.writeEnc(`.lcc/ssh/${safe}.enc`, { auth, material: body, updatedAt: new Date().toISOString() })
+  }
+
+  async removeSshMaterial(id: string): Promise<void> {
+    const safe = assertSafeEntityId(id)
+    const path = `.lcc/ssh/${safe}.enc`
+    if (await this.fs.exists(path)) await this.fs.remove(path)
+  }
+
+  async readMetricSamples(id: string): Promise<{ t: number; cpu: number; ram: number; disk: number; rx: number; tx: number }[]> {
+    const safe = assertSafeEntityId(id)
+    const row = await this.readEnc<{ samples?: unknown }>(`.lcc/metrics/${safe}.json.enc`)
+    if (!row || !Array.isArray(row.samples)) return []
+    return row.samples.flatMap((item) => {
+      if (!item || typeof item !== 'object') return []
+      const sample = item as Record<string, unknown>
+      const t = sample.t
+      const cpu = sample.cpu
+      const ram = sample.ram
+      const disk = sample.disk
+      const rx = sample.rx
+      const tx = sample.tx
+      if (typeof t !== 'number' || typeof cpu !== 'number' || typeof ram !== 'number' || typeof disk !== 'number') {
+        return []
+      }
+      if (typeof rx !== 'number' || typeof tx !== 'number') return []
+      return [{ t, cpu, ram, disk, rx, tx }]
+    })
+  }
+
+  async writeMetricSamples(
+    id: string,
+    samples: { t: number; cpu: number; ram: number; disk: number; rx: number; tx: number }[],
+  ): Promise<void> {
+    const safe = assertSafeEntityId(id)
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000
+    const kept = samples.filter((sample) => sample.t >= cutoff).slice(-20_160)
+    await this.fs.mkdir('.lcc/metrics')
+    await this.writeEnc(`.lcc/metrics/${safe}.json.enc`, { samples: kept })
   }
 
   /** Export encrypted snapshot marker for future cloud sync. */

@@ -241,3 +241,13 @@ export function IconPlay(p: IconProps) {
     </svg>
   )
 }
+
+export function IconTerminal(p: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" {...base} {...p}>
+      <rect x="3.5" y="4" width="17" height="16" rx="2" />
+      <path d="M7 8.5 10.5 12 7 15.5" />
+      <path d="M12 15.5h5" />
+    </svg>
+  )
+}
