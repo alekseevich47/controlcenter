@@ -3513,3 +3513,114 @@ tr.entity-focus td {
     animation: none;
   }
 }
+
+/* Круговая стрелка загрузки: крутится дуга, процент в центре стоит. */
+.update-arrow {
+  display: block;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.update-arrow-spin {
+  transform-box: view-box;
+  transform-origin: center;
+}
+
+.update-arrow.is-spinning .update-arrow-spin {
+  animation: update-arrow-rotate 0.9s linear infinite;
+}
+
+.update-arrow-pct {
+  font-family: var(--font);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+@keyframes update-arrow-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.updates-check-btn {
+  padding-top: 7px;
+  padding-bottom: 7px;
+  white-space: nowrap;
+}
+
+.updates-check-pct {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  min-width: 2.8ch;
+  text-align: right;
+}
+
+.updates-download-line {
+  margin: 0;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+
+.updates-download-line::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--lime-deep);
+  box-shadow: 0 0 0 3px rgba(198, 245, 61, 0.45);
+  flex-shrink: 0;
+}
+
+.update-download-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 42px;
+  padding: 0 12px 0 7px;
+  border-radius: 14px;
+  background: rgba(198, 245, 61, 0.34);
+  border: 1px solid rgba(159, 212, 18, 0.45);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: -0.02em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.update-download-pill:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+}
+
+.update-download-pill:focus-visible {
+  outline: 2px solid var(--lime-deep);
+  outline-offset: 2px;
+}
+
+.update-download-pill-pct {
+  font-variant-numeric: tabular-nums;
+  min-width: 2.6ch;
+  text-align: right;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .update-arrow.is-spinning .update-arrow-spin {
+    animation: none;
+  }
+
+  .update-download-pill {
+    transition: none;
+  }
+}

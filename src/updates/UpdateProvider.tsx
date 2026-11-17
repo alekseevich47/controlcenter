@@ -15,6 +15,11 @@ import {
   writePendingUpdate,
   type PendingUpdate,
 } from './pending'
+import {
+  getDownloadSnapshot,
+  subscribeDownload,
+  type DownloadSnapshot,
+} from './releaseDownload'
 import { fetchRemoteRelease } from './remote'
 import { isNewerVersion } from './semver'
 import { APP_VERSION } from '../version'
@@ -34,6 +39,8 @@ type UpdateContextValue = {
   available: PendingUpdate | null
   checking: boolean
   applying: boolean
+  /** Снимок загрузки релиза. Живёт в провайдере, не на странице. */
+  download: DownloadSnapshot
   /** Время удачной проверки, которая не нашла более новую версию. */
   lastCheckedAt: string | null
   offerOpen: boolean
@@ -114,6 +121,7 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
   const [available, setAvailable] = useState<PendingUpdate | null>(readInitialPending)
   const [checking, setChecking] = useState(false)
   const [applying, setApplying] = useState(false)
+  const [download, setDownload] = useState<DownloadSnapshot>(() => getDownloadSnapshot())
   const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null)
   const [offerOpen, setOfferOpen] = useState(false)
 
@@ -176,6 +184,8 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
     }
   }, [startCheck])
 
+  useEffect(() => subscribeDownload(setDownload), [])
+
   const checkNow = useCallback(async (): Promise<UpdateCheckResult> => {
     setChecking(true)
     try {
@@ -228,6 +238,7 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
       available,
       checking,
       applying,
+      download,
       lastCheckedAt,
       offerOpen,
       openOffer,
@@ -235,7 +246,18 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
       checkNow,
       applyNow,
     }),
-    [available, checking, applying, lastCheckedAt, offerOpen, openOffer, closeOffer, checkNow, applyNow],
+    [
+      available,
+      checking,
+      applying,
+      download,
+      lastCheckedAt,
+      offerOpen,
+      openOffer,
+      closeOffer,
+      checkNow,
+      applyNow,
+    ],
   )
 
   return <UpdateContext.Provider value={value}>{children}</UpdateContext.Provider>

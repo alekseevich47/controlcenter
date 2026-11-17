@@ -1,5 +1,6 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { LogoMark } from '../components/Logo'
+import { formatUpdatePercent, UpdateArrowIcon } from '../components/UpdateArrowIcon'
 import {
   IconBell,
   IconClients,
@@ -15,6 +16,7 @@ import {
   IconSettings,
 } from '../components/Icons'
 import { TopbarSearch } from '../components/TopbarSearch'
+import { useUpdates } from '../updates/UpdateProvider'
 import { APP_VERSION } from '../version'
 import { useVault } from '../vault/VaultContext'
 
@@ -34,7 +36,15 @@ const nav = [
 
 export function AppLayout() {
   const { prefs, lock } = useVault()
+  const { download } = useUpdates()
+  const { pathname } = useLocation()
   const initial = prefs.profileName.trim().charAt(0).toUpperCase() || 'N'
+  const transferring = download.phase === 'downloading' || download.phase === 'installing'
+  const onUpdates = pathname.replace(/\/+$/, '') === '/updates'
+  const showDownload = transferring && !onUpdates
+  const rounded = formatUpdatePercent(download.percent)
+  const phaseWord = download.phase === 'installing' ? 'Установка' : 'Скачивание'
+  const downloadLabel = rounded == null ? phaseWord : `${phaseWord} ${rounded}%`
 
   return (
     <div className="app-shell">
@@ -73,6 +83,14 @@ export function AppLayout() {
         <header className="topbar">
           <TopbarSearch />
           <div className="topbar-actions">
+            {showDownload ? (
+              <Link to="/updates" className="update-download-pill" aria-label={downloadLabel}>
+                <UpdateArrowIcon spinning percent={download.percent} size={28} />
+                <span className="update-download-pill-pct" aria-hidden="true">
+                  {rounded == null ? '…' : `${rounded}%`}
+                </span>
+              </Link>
+            ) : null}
             <button className="icon-btn" type="button" aria-label="Уведомления">
               <IconBell />
               <i className="dot" />

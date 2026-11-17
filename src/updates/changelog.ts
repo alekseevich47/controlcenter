@@ -17,6 +17,17 @@ export type ChangelogEntry = {
 /** Новые записи — в начало массива. */
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    id: '2026-11-17-release-download',
+    date: '2026-11-17',
+    version: '0.2.1',
+    title: 'Скачивание установщика релиза',
+    highlights: [
+      'Спиннер стрелки и процент внутри',
+      'Процент виден в топбаре при уходе со страницы',
+      'Установщик не трогает vault',
+    ],
+  },
+  {
     id: '2026-11-17-repo-updates',
     date: '2026-11-17',
     version: '0.2.1',
