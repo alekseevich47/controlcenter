@@ -6,5 +6,7 @@
   "4": "apply_fullscreen",
   "5": "build",
   "6": "build.rs",
-  "7": "main.rs"
+  "7": "main.rs",
+  "8": "Shared",
+  "9": "apply_app_update"
 }

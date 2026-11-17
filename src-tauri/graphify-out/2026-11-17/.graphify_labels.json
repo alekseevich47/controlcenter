@@ -1,0 +1,10 @@
+{
+  "0": "permissions",
+  "1": "icon",
+  "2": "tauri.conf.json",
+  "3": "default.json",
+  "4": "apply_fullscreen",
+  "5": "build",
+  "6": "build.rs",
+  "7": "main.rs"
+}

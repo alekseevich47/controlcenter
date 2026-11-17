@@ -9,6 +9,18 @@ fn main() {
   let mut windows = tauri_build::WindowsAttributes::new();
   windows = windows.window_icon_path("icons/icon.ico");
 
-  tauri_build::try_build(tauri_build::Attributes::new().windows_attributes(windows))
-    .expect("failed to run tauri-build");
+  // Без списка команд allow-local-api-* / allow-apply-app-update в capabilities
+  // не появляются в ACL → tauri-build падает с "Permission ... not found".
+  tauri_build::try_build(
+    tauri_build::Attributes::new()
+      .windows_attributes(windows)
+      .app_manifest(tauri_build::AppManifest::new().commands(&[
+        "local_api_start",
+        "local_api_stop",
+        "local_api_set_token",
+        "local_api_respond",
+        "apply_app_update",
+      ])),
+  )
+  .expect("failed to run tauri-build");
 }

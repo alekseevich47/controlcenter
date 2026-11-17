@@ -51,7 +51,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc0N0ZERDNERDU5QkIwRkYKUldUL3NKdlZQZDEvZE5JOFBQNUR4UkliaGRzY0JOWCtCWnNuS01FRWFkYjVMMUVkQ1Z3MUlpY2gK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDAyOUZERTk0MDA4NEM2REYKUldUZnhvUUFsTjZmQW51K1FWbmdoMURtOW91M2YycGZTNEV0VjdZL1hGRDg2WWUxS09tVGdleXkK",
       "endpoints": [
         "https://github.com/alekseevich47/controlcenter/releases/latest/download/latest.json"
       ]
