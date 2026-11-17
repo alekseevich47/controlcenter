@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { IconRefresh } from '../components/Icons'
+import { formatUpdatePercent, UpdateArrowIcon } from '../components/UpdateArrowIcon'
 import { useToast } from '../components/ToastProvider'
 import { UpdateOfferModal } from '../components/UpdateOfferModal'
 import {
@@ -8,6 +9,7 @@ import {
   formatChangelogDate,
   type ChangelogEntry,
 } from '../updates/changelog'
+import type { DownloadSnapshot } from '../updates/releaseDownload'
 import { useUpdates } from '../updates/UpdateProvider'
 import { APP_BUILD, APP_CHANNEL, APP_VERSION } from '../version'
 import { isTauri } from '../vault/runtime'
@@ -18,6 +20,7 @@ export function UpdatesPage() {
     available,
     checking,
     applying,
+    download,
     lastCheckedAt,
     offerOpen,
     openOffer,
@@ -33,14 +36,24 @@ export function UpdatesPage() {
   const runtime = isTauri() ? 'Tauri (диск ПК)' : 'браузер (IndexedDB)'
 
   const selected = CHANGELOG.find((entry) => entry.id === selectedId) ?? CHANGELOG[0] ?? null
+  const downloading = download.phase === 'downloading'
+  const installing = download.phase === 'installing'
+  const transferring = downloading || installing
   const busy = checking || applying
-  const label = applying
-    ? 'Обновляем…'
-    : checking
-      ? 'Проверяем…'
-      : available
-        ? 'Обновить'
-        : 'Проверить обновления'
+  const rounded = formatUpdatePercent(download.percent)
+  const label = downloading
+    ? 'Скачивание'
+    : installing
+      ? 'Установка'
+      : applying
+        ? 'Обновляем…'
+        : checking
+          ? 'Проверяем…'
+          : available
+            ? 'Обновить'
+            : 'Проверить обновления'
+  const percentCaption = transferring ? (rounded == null ? '…' : `${rounded}%`) : null
+  const downloadLine = formatDownloadLine(download)
 
   useEffect(() => {
     alive.current = true
@@ -56,6 +69,7 @@ export function UpdatesPage() {
   async function runApply() {
     if (applyLock.current) return
     applyLock.current = true
+    setConfirmOpen(false)
     try {
       const result = await applyNow()
       if (!alive.current) return
@@ -84,7 +98,7 @@ export function UpdatesPage() {
   }
 
   function onPrimaryClick() {
-    if (busy) return
+    if (transferring || busy) return
     if (available) {
       setConfirmOpen(true)
       return
@@ -109,11 +123,17 @@ export function UpdatesPage() {
           className="btn btn-primary updates-check-btn"
           type="button"
           onClick={onPrimaryClick}
-          disabled={busy}
-          aria-busy={busy}
+          disabled={busy && !transferring}
+          aria-busy={busy || transferring}
+          aria-label={percentCaption ? `${label} ${percentCaption}` : undefined}
         >
-          <IconRefresh width={16} height={16} className={busy ? 'spin' : undefined} />
-          {label}
+          <UpdateArrowIcon spinning={transferring} percent={download.percent} size={28} />
+          <span>{label}</span>
+          {percentCaption ? (
+            <span className="updates-check-pct" aria-hidden="true">
+              {percentCaption}
+            </span>
+          ) : null}
         </button>
       </div>
 
@@ -146,6 +166,7 @@ export function UpdatesPage() {
             {note}
           </p>
         ) : null}
+        {downloadLine ? <p className="updates-download-line">{downloadLine}</p> : null}
       </section>
 
       <div className={`updates-layout${selected ? ' has-detail' : ''}`}>
@@ -232,6 +253,26 @@ export function UpdatesPage() {
       ) : null}
     </>
   )
+}
+
+const MB = 1024 * 1024
+
+function formatMb(bytes: number): string {
+  const safe = Number.isFinite(bytes) ? Math.max(0, bytes) : 0
+  return new Intl.NumberFormat('ru-RU', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(safe / MB)
+}
+
+function formatDownloadLine(snap: DownloadSnapshot): string | null {
+  if (snap.phase !== 'downloading' && snap.phase !== 'installing') return null
+  if (snap.total != null && Number.isFinite(snap.total) && snap.total > 0) {
+    return `Скачано ${formatMb(snap.received)} из ${formatMb(snap.total)} МБ`
+  }
+  const pct = formatUpdatePercent(snap.percent)
+  if (pct != null) return `${pct}%`
+  return 'размер неизвестен'
 }
 
 function formatCheckedAt(iso: string): string {

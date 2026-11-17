@@ -25,6 +25,8 @@
     "allow-local-api-set-token",
     "allow-local-api-respond",
     "allow-apply-app-update",
+    "updater:default",
+    "process:allow-restart",
     "dialog:default",
     "fs:default",
     "fs:allow-app-read-recursive",
