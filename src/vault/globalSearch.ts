@@ -133,10 +133,13 @@ function searchServers(items: Server[], q: string): SearchHit[] {
       s.id,
       s.name,
       [s.host, s.role, s.status].filter(Boolean).join(' · '),
-      joinHay(s.name, s.host, s.specs, s.role, s.status, s.notes, s.tags),
+      joinHay(s.name, s.host, s.specs, s.role, s.status, s.notes, s.tags, s.description, s.hostSnapshot?.ip),
       q,
     )
-    if (found) out.push(found)
+    if (found) {
+      found.to = `/servers?open=${encodeURIComponent(found.id)}`
+      out.push(found)
+    }
   }
   return out
 }

@@ -7,9 +7,12 @@ export function IntegrationSettings() {
   const {
     prefs,
     githubLogin,
+    spacewebLogin,
     apiToken,
     connectGithub,
     disconnectGithub,
+    connectSpaceweb,
+    disconnectSpaceweb,
     setLocalApiEnabled,
     rotateApiToken,
   } = useVault()
@@ -17,6 +20,9 @@ export function IntegrationSettings() {
   const [token, setToken] = useState('')
   const [busy, setBusy] = useState(false)
   const [revealed, setRevealed] = useState(false)
+  const [swebLogin, setSwebLogin] = useState('')
+  const [swebPassword, setSwebPassword] = useState('')
+  const [swebBusy, setSwebBusy] = useState(false)
 
   async function onConnect() {
     setBusy(true)
@@ -40,6 +46,34 @@ export function IntegrationSettings() {
       notify({ message: error instanceof Error ? error.message : 'Не удалось отключить GitHub', tone: 'danger' })
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function onSpacewebConnect() {
+    setSwebBusy(true)
+    try {
+      const result = await connectSpaceweb(swebLogin, swebPassword)
+      setSwebPassword('')
+      setSwebLogin('')
+      notify({ message: `Spaceweb подключён: ${result.login}`, tone: 'success' })
+    } catch (error) {
+      notify({ message: error instanceof Error ? error.message : 'Не удалось подключить Spaceweb', tone: 'danger' })
+    } finally {
+      setSwebBusy(false)
+    }
+  }
+
+  async function onSpacewebDisconnect() {
+    setSwebBusy(true)
+    try {
+      await disconnectSpaceweb()
+      setSwebPassword('')
+      setSwebLogin('')
+      notify({ message: 'Кабинет Spaceweb отвязан', tone: 'info' })
+    } catch (error) {
+      notify({ message: error instanceof Error ? error.message : 'Не удалось отвязать Spaceweb', tone: 'danger' })
+    } finally {
+      setSwebBusy(false)
     }
   }
 
@@ -123,6 +157,60 @@ export function IntegrationSettings() {
         <p style={{ color: 'var(--muted)', fontSize: 13, marginTop: 12 }}>
           Достаточно fine-grained PAT с чтением Metadata, Contents и Pull requests. В проекте указывается только owner/repo.
         </p>
+      </section>
+
+      <section className="card settings-block">
+        <h3>Spaceweb</h3>
+        <p>Логин и пароль шифруются в vault (AES-GCM). Пароль не показывается повторно и не попадает в историю, prefs и ответы API.</p>
+        {spacewebLogin ? (
+          <div className="toggle-row">
+            <div>
+              <strong>{spacewebLogin}</strong>
+              <div style={{ color: 'var(--muted)', fontSize: 13 }}>Кабинет подключён</div>
+            </div>
+            <button className="btn btn-ghost" type="button" onClick={() => void onSpacewebDisconnect()} disabled={swebBusy}>
+              Отвязать
+            </button>
+          </div>
+        ) : (
+          <div className="form-grid">
+            <div className="field">
+              <label htmlFor="sweb-login">Логин</label>
+              <input
+                id="sweb-login"
+                autoComplete="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                value={swebLogin}
+                onChange={(event) => setSwebLogin(event.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="sweb-password">Пароль</label>
+              <input
+                id="sweb-password"
+                type="password"
+                autoComplete="off"
+                spellCheck={false}
+                value={swebPassword}
+                onChange={(event) => setSwebPassword(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') void onSpacewebConnect()
+                }}
+              />
+            </div>
+            <div>
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => void onSpacewebConnect()}
+                disabled={swebBusy || swebLogin.trim().length === 0 || swebPassword.length === 0}
+              >
+                Подключить
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="card settings-block">

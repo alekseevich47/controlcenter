@@ -132,7 +132,9 @@ export function seedServers(): Server[] {
       role: 'Tennis 42 prod',
       status: 'Online',
       statusKind: 'green',
+      description: 'Боевой хост Tennis 42',
       projectId: 'tennis42',
+      links: [{ projectId: 'tennis42', root: '/var/www/tennis42' }],
     },
     {
       ...stamp('test'),
@@ -166,6 +168,7 @@ export function seedDomains(): Domain[] {
       ssl: 'Let’s Encrypt · 78 дн.',
       project: 'Tennis 42',
       projectId: 'tennis42',
+      serverId: 'prod',
     },
     {
       ...stamp('d2'),

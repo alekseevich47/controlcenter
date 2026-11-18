@@ -15,6 +15,7 @@ import { ProjectsPage } from './pages/ProjectsPage'
 import { SecretsPage } from './pages/SecretsPage'
 import { SeoPage } from './pages/SeoPage'
 import { ServersPage } from './pages/ServersPage'
+import { ServerWorkspacePage } from './pages/ServerWorkspacePage'
 import { SettingsPage } from './pages/SettingsPage'
 import { UpdatesPage } from './pages/UpdatesPage'
 import { LocalApiHost } from './api/LocalApiHost'
@@ -41,6 +42,7 @@ function Gate() {
         <Route index element={<HomePage />} />
         <Route path="projects" element={<ProjectsPage />} />
         <Route path="servers" element={<ServersPage />} />
+        <Route path="servers/:serverId/:tab?" element={<ServerWorkspacePage />} />
         <Route path="domains" element={<DomainsPage />} />
         <Route path="seo" element={<SeoPage />} />
         <Route path="clients" element={<ClientsPage />} />

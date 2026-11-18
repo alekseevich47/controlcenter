@@ -1,78 +1,67 @@
 import { useEffect, useId, useState, type FormEvent } from 'react'
-import {
-  SERVER_STATUSES,
-  normalizeServerStatus,
-  type ServerStatus,
-} from '../vault/serverStatus'
-import type { Server } from '../vault/types'
 import { CustomSelect } from './CustomSelect'
 import { IconClose } from './Icons'
-
-const MAX = {
-  name: 120,
-  host: 200,
-  specs: 200,
-  role: 200,
-} as const
+import { ProjectPicker } from './ProjectPicker'
+import { SERVER_LIMITS, SERVER_ROLES, clip } from './servers/serverUi'
 
 export type ServerFormValues = {
   name: string
   host: string
   specs: string
   role: string
-  status: ServerStatus
+  description: string
+  projectId: string
 }
 
 interface ServerFormModalProps {
   open: boolean
-  mode: 'create' | 'edit'
-  initial?: Server | null
   busy?: boolean
+  /** Вкладка проекта: пикер скрыт, сервер сразу получит эту привязку. */
+  lockedProject?: { id: string; name: string } | null
   onClose: () => void
   onSubmit: (values: ServerFormValues) => Promise<void> | void
 }
 
-function fromServer(s?: Server | null): ServerFormValues {
-  return {
-    name: s?.name ?? '',
-    host: s?.host ?? '',
-    specs: s?.specs ?? '',
-    role: s?.role ?? '',
-    status: s ? normalizeServerStatus(s.status) : 'Online',
-  }
+const EMPTY: ServerFormValues = {
+  name: '',
+  host: '',
+  specs: '',
+  role: '',
+  description: '',
+  projectId: '',
 }
 
 function sanitize(values: ServerFormValues): ServerFormValues {
   return {
-    name: values.name.trim().slice(0, MAX.name),
-    host: values.host.trim().slice(0, MAX.host) || '—',
-    specs: values.specs.trim().slice(0, MAX.specs) || '—',
-    role: values.role.trim().slice(0, MAX.role) || '—',
-    status: normalizeServerStatus(values.status),
+    name: clip(values.name, SERVER_LIMITS.name),
+    host: clip(values.host, SERVER_LIMITS.host),
+    specs: clip(values.specs, SERVER_LIMITS.specs),
+    role: clip(values.role, SERVER_LIMITS.role),
+    description: clip(values.description, SERVER_LIMITS.description),
+    projectId: values.projectId.trim(),
   }
 }
 
 function ServerFormBody({
-  mode,
-  initial,
   busy,
+  lockedProject,
   onClose,
   onSubmit,
 }: Omit<ServerFormModalProps, 'open'>) {
   const titleId = useId()
-  const [values, setValues] = useState<ServerFormValues>(() => fromServer(initial))
+  const [values, setValues] = useState<ServerFormValues>(EMPTY)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault()
     const next = sanitize(values)
     if (!next.name) {
       setError('Укажите название сервера')
@@ -85,15 +74,15 @@ function ServerFormBody({
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <form
-        className="modal-card card project-form-modal"
+        className="modal-card card servers-form-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        onMouseDown={(e) => e.stopPropagation()}
-        onSubmit={(e) => void handleSubmit(e)}
+        onMouseDown={(event) => event.stopPropagation()}
+        onSubmit={(event) => void handleSubmit(event)}
       >
         <div className="modal-head">
-          <h2 id={titleId}>{mode === 'create' ? 'Добавить сервер' : 'Редактировать сервер'}</h2>
+          <h2 id={titleId}>Добавить сервер</h2>
           <button className="icon-btn modal-close" type="button" aria-label="Закрыть" onClick={onClose}>
             <IconClose />
           </button>
@@ -106,8 +95,8 @@ function ServerFormBody({
               id="srv-name"
               autoFocus
               value={values.name}
-              maxLength={MAX.name}
-              onChange={(e) => setValues((v) => ({ ...v, name: e.target.value }))}
+              maxLength={SERVER_LIMITS.name}
+              onChange={(event) => setValues((current) => ({ ...current, name: event.target.value }))}
               placeholder="Prod Server"
               required
             />
@@ -117,20 +106,9 @@ function ServerFormBody({
             <input
               id="srv-host"
               value={values.host}
-              maxLength={MAX.host}
-              onChange={(e) => setValues((v) => ({ ...v, host: e.target.value }))}
+              maxLength={SERVER_LIMITS.host}
+              onChange={(event) => setValues((current) => ({ ...current, host: event.target.value }))}
               placeholder="VPS · Timeweb"
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="srv-status">Статус</label>
-            <CustomSelect
-              id="srv-status"
-              value={values.status}
-              options={SERVER_STATUSES.map((s) => ({ value: s, label: s }))}
-              onChange={(status) =>
-                setValues((v) => ({ ...v, status: status as ServerStatus }))
-              }
             />
           </div>
           <div className="field">
@@ -138,31 +116,57 @@ function ServerFormBody({
             <input
               id="srv-specs"
               value={values.specs}
-              maxLength={MAX.specs}
-              onChange={(e) => setValues((v) => ({ ...v, specs: e.target.value }))}
+              maxLength={SERVER_LIMITS.specs}
+              onChange={(event) => setValues((current) => ({ ...current, specs: event.target.value }))}
               placeholder="2 vCPU · 4 GB · 40 GB SSD"
             />
           </div>
-          <div className="field">
+          <div className="field" style={{ gridColumn: '1 / -1' }}>
             <label htmlFor="srv-role">Роль</label>
-            <input
+            <CustomSelect
               id="srv-role"
               value={values.role}
-              maxLength={MAX.role}
-              onChange={(e) => setValues((v) => ({ ...v, role: e.target.value }))}
-              placeholder="prod / staging / backup"
+              allowCustom
+              placeholder="Роль"
+              options={SERVER_ROLES.map((role) => ({ value: role, label: role }))}
+              onChange={(role) => setValues((current) => ({ ...current, role }))}
             />
+          </div>
+          <div className="field" style={{ gridColumn: '1 / -1' }}>
+            <label htmlFor="srv-desc">Описание</label>
+            <textarea
+              id="srv-desc"
+              value={values.description}
+              maxLength={SERVER_LIMITS.description}
+              onChange={(event) => setValues((current) => ({ ...current, description: event.target.value }))}
+              placeholder="Для чего этот хост"
+            />
+          </div>
+          <div className="field" style={{ gridColumn: '1 / -1' }}>
+            {lockedProject ? (
+              <p className="form-hint">Будет прикреплён к проекту «{lockedProject.name}».</p>
+            ) : (
+              <>
+                <label htmlFor="srv-project">Проект</label>
+                <ProjectPicker
+                  id="srv-project"
+                  value={values.projectId}
+                  embedded={false}
+                  onChange={(projectId) => setValues((current) => ({ ...current, projectId }))}
+                />
+              </>
+            )}
           </div>
         </div>
 
-        {error && <div className="unlock-error">{error}</div>}
+        {error ? <div className="unlock-error">{error}</div> : null}
 
         <div className="modal-actions">
           <button className="btn btn-ghost" type="button" onClick={onClose} disabled={busy}>
             Отмена
           </button>
           <button className="btn btn-primary" type="submit" disabled={busy}>
-            {busy ? 'Сохраняем…' : mode === 'create' ? 'Добавить' : 'Сохранить'}
+            {busy ? 'Сохраняем…' : 'Добавить'}
           </button>
         </div>
       </form>
@@ -170,14 +174,13 @@ function ServerFormBody({
   )
 }
 
-export function ServerFormModal({ open, mode, initial, busy, onClose, onSubmit }: ServerFormModalProps) {
+export function ServerFormModal({ open, busy, lockedProject, onClose, onSubmit }: ServerFormModalProps) {
   if (!open) return null
   return (
     <ServerFormBody
-      key={`${mode}-${initial?.id ?? 'new'}`}
-      mode={mode}
-      initial={initial}
+      key={lockedProject?.id ?? 'new'}
       busy={busy}
+      lockedProject={lockedProject}
       onClose={onClose}
       onSubmit={onSubmit}
     />

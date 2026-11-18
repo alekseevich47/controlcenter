@@ -1,6 +1,16 @@
+mod hosting;
 mod local_api;
+mod ssh;
 mod updater;
 
+use hosting::{hosting_get_token, hosting_request};
+use ssh::{
+    ssh_journal, ssh_list_dir, ssh_metrics, ssh_mkdir, ssh_probe, ssh_pty_close, ssh_pty_open,
+    ssh_pty_resize, ssh_pty_write, ssh_pull_tree, ssh_push_tree, ssh_read_file, ssh_remove, ssh_restic,
+    ssh_services,
+    ssh_write_file,
+    PtyHub,
+};
 use local_api::{local_api_respond, local_api_set_token, local_api_start, local_api_stop, LocalApi};
 use updater::apply_app_update;
 use tauri::{include_image, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
@@ -17,12 +27,31 @@ pub fn run() {
     .plugin(tauri_plugin_updater::Builder::new().build())
     .plugin(tauri_plugin_process::init())
     .manage(LocalApi::new())
+    .manage(PtyHub::new())
     .invoke_handler(tauri::generate_handler![
       local_api_start,
       local_api_stop,
       local_api_set_token,
       local_api_respond,
-      apply_app_update
+      apply_app_update,
+      hosting_get_token,
+      hosting_request,
+      ssh_probe,
+      ssh_metrics,
+      ssh_services,
+      ssh_journal,
+      ssh_list_dir,
+      ssh_read_file,
+      ssh_write_file,
+      ssh_mkdir,
+      ssh_remove,
+      ssh_restic,
+      ssh_pull_tree,
+      ssh_push_tree,
+      ssh_pty_open,
+      ssh_pty_write,
+      ssh_pty_resize,
+      ssh_pty_close
     ])
     .setup(|app| {
       if let Some(window) = app.get_webview_window("main") {

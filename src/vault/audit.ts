@@ -34,7 +34,10 @@ export type DiffRow = {
 
 const SKIP_KEYS = new Set(['updatedAt'])
 
-/** Поля, которые не кладём в audit-снимки (шум / объём). */
+/**
+ * Поля, которые не кладём в audit-снимки (шум / объём).
+ * Срабатывает на любой глубине. `secretId` и `passwordRef` — это id, их не скрываем.
+ */
 const REDACT_STORE = new Set([
   'body',
   'token',
@@ -42,6 +45,10 @@ const REDACT_STORE = new Set([
   'secret',
   'authorization',
   'pat',
+  'privateKey',
+  'passphrase',
+  'credential',
+  'credentials',
 ])
 
 export function normalizeAction(raw?: string): AuditAction {
@@ -58,17 +65,23 @@ export function entityLabel(_collection: Collection, entity: CollectionMap[Colle
   return entity.id
 }
 
-export function snapshotEntity(entity: CollectionMap[Collection] | null | undefined): JsonDict | null {
-  if (!entity) return null
+function redactValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => redactValue(item))
+  if (!value || typeof value !== 'object') return value
   const out: JsonDict = {}
-  for (const [k, v] of Object.entries(entity as unknown as JsonDict)) {
+  for (const [k, v] of Object.entries(value as JsonDict)) {
     if (REDACT_STORE.has(k)) {
-      out[k] = typeof v === 'string' && v.length > 0 ? '«скрыто в истории»' : v
+      out[k] = v == null || v === '' ? v : '«скрыто в истории»'
       continue
     }
-    out[k] = v
+    out[k] = redactValue(v)
   }
   return out
+}
+
+export function snapshotEntity(entity: CollectionMap[Collection] | null | undefined): JsonDict | null {
+  if (!entity) return null
+  return redactValue(entity) as JsonDict
 }
 
 export function changedKeys(before: JsonDict | null, after: JsonDict | null): string[] {

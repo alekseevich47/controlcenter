@@ -57,7 +57,7 @@ function testUserData(): void {
   expectUserData('C:\\Users\\x\\AppData\\Roaming\\ru.loomixx.lcc\\LCC-VAULT\\')
   expectUserData(`${vaultRoot}/readme.txt`)
 
-  for (const file of ['github.enc', 'api-token.enc', 'prefs.json', 'probe.enc', 'meta.json']) {
+  for (const file of ['github.enc', 'spaceweb.enc', 'api-token.enc', 'prefs.json', 'probe.enc', 'meta.json']) {
     expectUserData(`${vaultRoot}/.lcc/${file}`)
     expectUserData(`${chosen}/.lcc/${file}`)
     expectUserData(`.lcc/${file}`)
