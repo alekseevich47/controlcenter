@@ -129,9 +129,20 @@ export function previewFacts(server: Server): { label: string; value: string }[]
   ]
 }
 
+function errorText(error: unknown): string {
+  if (typeof error === 'string') return error.trim()
+  if (error instanceof Error) return error.message.trim()
+  if (error && typeof error === 'object') {
+    const row = error as { message?: unknown; error?: unknown }
+    if (typeof row.message === 'string') return row.message.trim()
+    if (typeof row.error === 'string') return row.error.trim()
+  }
+  return ''
+}
+
+/** Rust-команда Tauri отклоняет промис строкой, не объектом Error. */
 export function failureMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) return error.message
-  return 'Не удалось сохранить'
+  return errorText(error) || 'Не удалось сохранить'
 }
 
 export function prefersReducedMotion(): boolean {

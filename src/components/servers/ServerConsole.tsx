@@ -143,8 +143,9 @@ export function ServerConsole({ server }: { server: Server }) {
     }
     setBusy(true)
     setError(null)
+    let auth: SshMaterialAuth | null = null
     try {
-      const auth = await material()
+      auth = await material()
       if (!auth) {
         setError('Сохранённый доступ не найден')
         return
@@ -157,7 +158,8 @@ export function ServerConsole({ server }: { server: Server }) {
       }
       await openPty(auth)
     } catch (reason) {
-      setError(failureMessage(reason))
+      const where = auth ? ` (${auth.host}:${auth.port})` : ''
+      setError(`${failureMessage(reason)}${where}`)
     } finally {
       setBusy(false)
     }
